@@ -4,7 +4,6 @@ const Movie = require('./movie');
 const Genre = require('./genre');
 const MovieGenre = require('./movie_genre');
 const Review = require('./review');
-const User = require('./user');
 const People = require('./people');
 const Credits = require('./credits');
 
@@ -34,17 +33,8 @@ Review.belongsTo(Movie, {
   as: 'movie'
 });
 
-User.hasMany(Review, {
-  foreignKey: 'user_id',
-  as: 'reviews',
-  onDelete: 'CASCADE',
-  onUpdate: 'CASCADE'
-});
-
-Review.belongsTo(User, {
-  foreignKey: 'user_id',
-  as: 'user'
-});
+// Nota: No hay relación con User porque está en otro microservicio
+// user_id es solo una referencia externa
 
 Movie.belongsToMany(People, {
   through: Credits,
@@ -90,7 +80,6 @@ module.exports = {
   Genre,
   MovieGenre,
   Review,
-  User,
   People,
   Credits
 };
