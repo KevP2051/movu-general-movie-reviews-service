@@ -15,7 +15,12 @@
     "db:create": "sequelize-cli db:create",
     "db:drop": "sequelize-cli db:drop",
     "migration:generate": "sequelize-cli migration:generate --name",
-    "seed:generate": "sequelize-cli seed:generate --name"
+    "seed:generate": "sequelize-cli seed:generate --name",
+    "tmdb:genres": "node src/scripts/tmdb-importer.js genres",
+    "tmdb:popular": "node src/scripts/tmdb-importer.js popular",
+    "tmdb:top-rated": "node src/scripts/tmdb-importer.js top-rated",
+    "tmdb:all": "node src/scripts/tmdb-importer.js all",
+    "tmdb:movie": "node src/scripts/tmdb-importer.js movie"
   },
   "keywords": [
     "movies",
@@ -27,6 +32,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.13.2",
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
     "express": "^4.18.0",
