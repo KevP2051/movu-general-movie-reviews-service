@@ -3,11 +3,12 @@ const {sequelize} = require('../config/database');
 
 class People extends Model {}
 People.init({
-    people_id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    first_name: {type: DataTypes.STRING, allowNull: false},
-    last_name: {type: DataTypes.STRING, allowNull: false},
-    birth_date: {type: DataTypes.DATEONLY, allowNull: false},
-    biography: {type: DataTypes.TEXT, allowNull: true}},{
+    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true, field: 'people_id'},
+    name: {type: DataTypes.STRING, allowNull: true},
+    first_name: {type: DataTypes.STRING, allowNull: true},
+    last_name: {type: DataTypes.STRING, allowNull: true},
+    tmdb_id: {type: DataTypes.INTEGER, allowNull: true, unique: true},
+    profile_path: {type: DataTypes.STRING, allowNull: true}},{
     sequelize,
     modelName: 'people',
     tableName: 'PEOPLE',

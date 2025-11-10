@@ -189,10 +189,8 @@ class TMDbService {
       original_language: tmdbMovie.original_language,
       tmdb_id: tmdbMovie.id,
       poster_path: tmdbMovie.poster_path,
-      backdrop_path: tmdbMovie.backdrop_path,
-      popularity: tmdbMovie.popularity,
-      vote_average: tmdbMovie.vote_average,
-      vote_count: tmdbMovie.vote_count
+      backdrop_path: tmdbMovie.backdrop_path
+      // popularity, vote_average, vote_count eliminados - se calcularán desde reviews propias
     };
   }
 
@@ -200,10 +198,20 @@ class TMDbService {
    * Formatear datos de persona de TMDb a nuestro formato
    */
   formatPersonData(tmdbPerson) {
+    // TMDB solo proporciona el nombre completo, no separado en first_name y last_name
+    // Intentamos una separación básica, pero priorizamos el campo 'name' completo
+    const fullName = tmdbPerson.name || '';
+    const nameParts = fullName.trim().split(' ');
+    const firstName = nameParts.length > 0 ? nameParts[0] : fullName;
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
     return {
-      name: tmdbPerson.name,
+      name: fullName,
+      first_name: firstName || null,
+      last_name: lastName || null,
       tmdb_id: tmdbPerson.id,
       profile_path: tmdbPerson.profile_path
+      // birth_date y biography eliminados - no disponibles en credits API
     };
   }
 }
