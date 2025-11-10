@@ -103,7 +103,7 @@ class TMDbImporter {
         const person = await this.findOrCreatePerson(director);
         await Credits.create({
           movie_id: movieId,
-          person_id: person.id,
+          person_id: person.id, // Ahora usa person_id que está mapeado a people_id
           role_type: 'director',
           character_name: null
         });
@@ -116,7 +116,7 @@ class TMDbImporter {
         const person = await this.findOrCreatePerson(actor);
         await Credits.create({
           movie_id: movieId,
-          person_id: person.id,
+          person_id: person.id, // Ahora usa person_id que está mapeado a people_id
           role_type: 'actor',
           character_name: actor.character
         });
