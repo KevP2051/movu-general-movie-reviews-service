@@ -16,11 +16,18 @@
     "db:drop": "sequelize-cli db:drop",
     "migration:generate": "sequelize-cli migration:generate --name",
     "seed:generate": "sequelize-cli seed:generate --name",
+    "db:populate": "node src/scripts/populate-database.js",
+    "db:populate:clean": "node src/scripts/populate-database.js --clean",
+    "db:populate:full": "node src/scripts/populate-database.js --pages 10",
     "tmdb:genres": "node src/scripts/tmdb-importer.js genres",
     "tmdb:popular": "node src/scripts/tmdb-importer.js popular",
     "tmdb:top-rated": "node src/scripts/tmdb-importer.js top-rated",
     "tmdb:all": "node src/scripts/tmdb-importer.js all",
-    "tmdb:movie": "node src/scripts/tmdb-importer.js movie"
+    "tmdb:movie": "node src/scripts/tmdb-importer.js movie",
+    "tmdb:reimport-credits": "node src/scripts/reimport-credits.js",
+    "db:dump": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-database-dump.ps1",
+    "db:dump:external": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-dump-external.ps1",
+    "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1"
   },
   "keywords": [
     "movies",

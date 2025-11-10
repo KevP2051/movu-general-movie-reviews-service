@@ -2,36 +2,37 @@
 
 Microservicio de reseñas de películas para la plataforma Movu. Proporciona una API REST completa para gestionar películas, reseñas, géneros y personas relacionadas con el cine.
 
-## 📋 Tabla de Contenidos
+## Tabla de Contenidos
 
 - [Características](#características)
 - [Requisitos](#requisitos)
 - [Instalación](#instalación)
 - [Configuración](#configuración)
+- [Docker Setup (Recomendado)](#docker-setup-recomendado)
 - [Ejecución](#ejecución)
 - [API Endpoints](#api-endpoints)
-- [Importar Datos desde TMDb](#importar-datos-desde-tmdb)
+- [Poblar Base de Datos desde TMDb](#poblar-base-de-datos-desde-tmdb)
 - [Base de Datos](#base-de-datos)
 - [Modelos](#modelos)
 - [Documentación](#documentación)
 
 ---
 
-## ✨ Características
+## Características
 
-- 🎬 **Gestión de Películas**: CRUD completo, búsqueda, filtrado por género, director, año
-- ⭐ **Sistema de Reseñas**: Calificaciones, comentarios, moderación (aprobar/rechazar)
-- 🎭 **Gestión de Personas**: Actores, directores, crew
-- 🏷️ **Géneros**: Categorización de películas
-- 📊 **Estadísticas**: Ratings promedio, distribución de calificaciones
-- 🔍 **Búsqueda Avanzada**: Por título, director, año, género
-- 📥 **Importación TMDb**: Alimentar la BD automáticamente desde TMDb API
-- 🔄 **Paginación**: En todos los endpoints que retornan listas
-- ✅ **Validación**: Middleware de validación de datos
+- **Gestión de Películas**: CRUD completo, búsqueda, filtrado por género, director, año
+- **Sistema de Reseñas**: Calificaciones, comentarios, moderación (aprobar/rechazar)
+- **Gestión de Personas**: Actores, directores, crew
+- **Géneros**: Categorización de películas
+- **Estadísticas**: Ratings promedio, distribución de calificaciones
+- **Búsqueda Avanzada**: Por título, director, año, género
+- **Importación TMDb**: Alimentar la BD automáticamente desde TMDb API
+- **Paginación**: En todos los endpoints que retornan listas
+- **Validación**: Middleware de validación de datos
 
 ---
 
-## 🔧 Requisitos
+## Requisitos
 
 - **Node.js**: v16 o superior
 - **PostgreSQL**: v12 o superior
@@ -40,7 +41,7 @@ Microservicio de reseñas de películas para la plataforma Movu. Proporciona una
 
 ---
 
-## 📦 Instalación
+## Instalación
 
 ```powershell
 # Clonar el repositorio
@@ -53,7 +54,7 @@ npm install
 
 ---
 
-## ⚙️ Configuración
+## Configuración
 
 ### 1. Variables de Entorno
 
@@ -71,7 +72,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=movu_db
 DB_USER=postgres
-DB_PASSWORD=your_password
+DB_PASSWORD=
 DB_SCHEMA=general_movie_reviews_service
 
 # Server
@@ -79,15 +80,19 @@ PORT=3001
 NODE_ENV=development
 
 # TMDb API (opcional, para importar datos)
-TMDB_API_KEY=your_tmdb_api_key_here
+TMDB_API_KEY=
 ```
 
 ### 2. Base de Datos
 
-#### Con Docker (Recomendado)
+#### Opción A: Con Docker Compose (Recomendado)
+
+Ver la sección [Docker Setup](#docker-setup-recomendado) más abajo para setup completo con un solo comando.
+
+#### Opción B: Docker Manual
 
 ```powershell
-docker run --name movu-postgres -e POSTGRES_PASSWORD=your_password -e POSTGRES_DB=movu_db -p 5432:5432 -d postgres:14
+docker run --name movu-postgres -e POSTGRES_PASSWORD=<tu_password> -e POSTGRES_DB=movu_db -p 5432:5432 -d postgres:14
 ```
 
 #### Ejecutar Migraciones
@@ -102,7 +107,80 @@ Esto creará automáticamente:
 
 ---
 
-## 🚀 Ejecución
+## Docker Setup (Recomendado)
+
+La forma más rápida de tener todo funcionando es usar Docker Compose, que levantará:
+- PostgreSQL con el esquema creado
+- Migraciones ejecutadas automáticamente
+- Opcionalmente, datos pre-cargados de TMDB
+
+### Inicio Rápido con Docker
+
+```powershell
+# 1. Configurar variables de entorno
+cp .env.docker .env
+
+# Editar .env con tus valores:
+# - DB_PASSWORD=tu_password
+# - TMDB_API_KEY=tu_api_key (si quieres datos)
+# - POPULATE_DATABASE=true (para pre-cargar datos)
+
+# 2. Levantar todo con un solo comando
+docker-compose up -d
+
+# 3. Verificar que está funcionando
+docker-compose logs -f
+```
+
+Esto creará automáticamente:
+- Base de datos PostgreSQL
+- Esquema `general_movie_reviews_service`
+- Todas las tablas (via migraciones)
+- Datos de TMDB (si `POPULATE_DATABASE=true`)
+
+### Comandos Docker Útiles
+
+```powershell
+# Ver logs
+docker-compose logs -f
+
+# Detener
+docker-compose down
+
+# Reiniciar desde cero (borra todos los datos)
+docker-compose down -v
+docker-compose up -d
+
+# Ejecutar migraciones manualmente
+docker-compose exec db-setup npm run db:migrate
+
+# Poblar datos manualmente
+docker-compose exec db-setup npm run db:populate
+
+# Validar que todo está configurado correctamente
+npm run db:validate
+
+# Generar dump SQL para usar en otro repositorio
+npm run db:dump
+```
+
+### Usar en Otro Repositorio
+
+Si quieres levantar la base de datos en un repositorio separado:
+
+**Documentación detallada:**
+- [docker/STEP_BY_STEP.md](docker/STEP_BY_STEP.md) - Instrucciones paso a paso
+- [docker/EXTERNAL_REPO_SETUP.md](docker/EXTERNAL_REPO_SETUP.md) - 4 opciones diferentes
+- [docker/README.md](docker/README.md) - Documentación completa
+
+**Guía rápida:**
+1. Genera el dump: `npm run db:dump`
+2. Copia archivos a tu otro repo (ver guía)
+3. Ejecuta: `docker-compose up -d`
+
+---
+
+## Ejecución
 
 ### Modo Desarrollo
 
@@ -120,7 +198,7 @@ npm start
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
 El servidor expone los siguientes endpoints:
 
@@ -170,26 +248,79 @@ El servidor expone los siguientes endpoints:
 
 ---
 
-## 📥 Importar Datos desde TMDb
+## Poblar Base de Datos desde TMDb
 
-El proyecto incluye un importador automático desde The Movie Database (TMDb).
+El proyecto incluye un **script maestro** que pobla automáticamente toda la base de datos desde The Movie Database (TMDb) con un solo comando.
 
-### Setup Rápido
+### Setup Rápido (Recomendado)
 
 ```powershell
 # 1. Configurar TMDB_API_KEY en .env
 
-# 2. Importar todo (géneros + películas populares + top rated)
-npm run tmdb:all
+# 2. Poblar la base de datos completa con un solo comando
+npm run db:populate
 ```
 
+Este comando ejecutará:
+1. Migraciones de base de datos
+2. Importación de géneros (19 géneros en español)
+3. Importación de películas (populares + top rated)
+4. Importación de créditos (directores + actores)
+5. Verificación de datos
+
+**Resultado esperado:** ~80-100 películas con géneros, directores y actores completos.
+
 ### Comandos Disponibles
+
+```powershell
+# Poblar todo desde cero (limpia datos existentes)
+npm run db:populate:clean
+
+# Poblar todo (más páginas de películas)
+npm run db:populate:full
+
+# Solo importar géneros
+npm run db:populate -- --genres-only
+
+# Solo importar películas (sin créditos)
+npm run db:populate -- --movies-only --pages 10
+
+# Solo importar créditos
+npm run db:populate -- --credits-only
+```
+
+### Opciones Avanzadas
+
+```powershell
+# Importar 20 páginas de películas (400 películas)
+npm run db:populate -- --pages 20
+
+# Limpiar y poblar con 10 páginas
+npm run db:populate -- --clean --pages 10
+
+# Solo géneros con limpieza
+npm run db:populate -- --clean --genres-only
+```
+
+### Documentación Completa
+
+Para más detalles sobre:
+- Arquitectura del script
+- Datos importados
+- Solución de problemas
+- Uso de imágenes de TMDb
+
+**Ver guía completa:** [docs/DATABASE_POPULATION.md](docs/DATABASE_POPULATION.md)
+
+### Scripts Individuales (Uso Avanzado)
+
+Si necesitas importar componentes específicos manualmente:
 
 ```powershell
 # Importar géneros
 npm run tmdb:genres
 
-# Importar películas populares (2 páginas = 40 películas)
+# Importar películas populares
 npm run tmdb:popular
 
 # Importar películas mejor valoradas
@@ -199,24 +330,11 @@ npm run tmdb:top-rated
 npm run tmdb:movie 278  # The Shawshank Redemption
 ```
 
-### Comandos Avanzados
-
-```powershell
-# Importar 10 páginas de películas populares (200 películas)
-node src/scripts/tmdb-importer.js popular 10
-
-# Importar películas de ciencia ficción
-node src/scripts/tmdb-importer.js genre 878 5
-
-# Importar todo con 10 páginas por categoría
-node src/scripts/tmdb-importer.js all 10
-```
-
-**Ver guía completa:** [docs/TMDB_IMPORT.md](docs/TMDB_IMPORT.md)
+**Ver más opciones:** [docs/TMDB_IMPORT.md](docs/TMDB_IMPORT.md)
 
 ---
 
-## 🗄️ Base de Datos
+## Base de Datos
 
 ### Esquema
 
@@ -253,7 +371,7 @@ npm run seed:generate -- nombre-del-seeder
 
 ---
 
-## 📊 Modelos
+## Modelos
 
 El proyecto incluye los siguientes modelos Sequelize:
 
@@ -282,25 +400,29 @@ Créditos de películas con rol (`actor`, `director`, `producer`, etc.)
 
 ---
 
-## 📚 Documentación
+## Documentación
 
+- **[docker/README.md](docker/README.md)**: Guía completa de Docker Compose
+- **[docker/EXTERNAL_REPO_SETUP.md](docker/EXTERNAL_REPO_SETUP.md)**: Cómo usar la base de datos en otro repositorio
+- **[DATABASE_POPULATION.md](docs/DATABASE_POPULATION.md)**: Guía completa de población de base de datos
+- **[TMDB_IMPORT.md](docs/TMDB_IMPORT.md)**: Guía de importación manual avanzada desde TMDb
 - **[ENDPOINTS.md](docs/ENDPOINTS.md)**: Documentación completa de la API con ejemplos
-- **[TMDB_IMPORT.md](docs/TMDB_IMPORT.md)**: Guía para importar datos desde TMDb
 
 ---
 
-## 🛠️ Tecnologías
+## Tecnologías
 
 - **Express**: Framework web
 - **Sequelize**: ORM para PostgreSQL
 - **PostgreSQL**: Base de datos
+- **Docker**: Containerización
 - **Axios**: Cliente HTTP para TMDb API
 - **dotenv**: Gestión de variables de entorno
 - **CORS**: Manejo de CORS
 
 ---
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 movu-general-movie-reviews-service/
@@ -324,7 +446,7 @@ movu-general-movie-reviews-service/
 
 ---
 
-## 🔐 Notas de Seguridad
+## Notas de Seguridad
 
 - **user_id en Reviews**: Es una referencia externa al servicio de autenticación (no hay FK)
 - **Autenticación**: Actualmente no implementada (próxima versión)
@@ -332,7 +454,7 @@ movu-general-movie-reviews-service/
 
 ---
 
-## 🐛 Solución de Problemas
+## Solución de Problemas
 
 ### Error: "Schema does not exist"
 
@@ -354,13 +476,13 @@ El importador omite automáticamente películas ya existentes (por `tmdb_id`).
 
 ---
 
-## 📝 License
+## License
 
 ISC
 
 ---
 
-## 👥 Contribuir
+## Contribuir
 
 1. Fork el proyecto
 2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
@@ -370,6 +492,6 @@ ISC
 
 ---
 
-## 📞 Contacto
+## Contacto
 
 Para preguntas o sugerencias, abre un issue en el repositorio.

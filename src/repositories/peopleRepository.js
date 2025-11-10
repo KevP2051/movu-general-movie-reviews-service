@@ -76,7 +76,7 @@ class PeopleRepository {
    * Obtener películas donde participó una persona
    */
   async getMoviesByPerson(peopleId, roleType = null) {
-    const where = { people_id: peopleId };
+    const where = { person_id: peopleId };
     if (roleType) where.role_type = roleType;
 
     return await Credits.findAll({

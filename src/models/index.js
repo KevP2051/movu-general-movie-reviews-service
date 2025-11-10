@@ -39,13 +39,13 @@ Review.belongsTo(Movie, {
 Movie.belongsToMany(People, {
   through: Credits,
   foreignKey: 'movie_id',
-  otherKey: 'people_id',
+  otherKey: 'person_id',
   as: 'cast'
 });
 
 People.belongsToMany(Movie, {
   through: Credits,
-  foreignKey: 'people_id',
+  foreignKey: 'person_id',
   otherKey: 'movie_id',
   as: 'movies'
 });
@@ -63,14 +63,14 @@ Credits.belongsTo(Movie, {
 });
 
 People.hasMany(Credits, {
-  foreignKey: 'people_id',
+  foreignKey: 'person_id',
   as: 'credits',
   onDelete: 'CASCADE',
   onUpdate: 'CASCADE'
 });
 
 Credits.belongsTo(People, {
-  foreignKey: 'people_id',
+  foreignKey: 'person_id',
   as: 'person'
 });
 
