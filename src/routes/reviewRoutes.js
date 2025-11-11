@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const reviewController = require('../controllers/reviewController');
+const { requireAuth, requireAdmin } = require('../middleware/gateway');
 
 /**
  * @route   GET /api/reviews
@@ -56,41 +57,41 @@ router.get('/:id', reviewController.getReviewById);
  * @route   POST /api/reviews
  * @desc    Create a new review
  * @body    review data
- * @access  Private (Authenticated User)
+ * @access  Private (Authenticated User - Gateway validates)
  */
-router.post('/', reviewController.createReview);
+router.post('/', requireAuth, reviewController.createReview);
 
 /**
  * @route   PUT /api/reviews/:id
  * @desc    Update review
  * @params  id
  * @body    review data
- * @access  Private (Owner only)
+ * @access  Private (Authenticated User - Gateway validates)
  */
-router.put('/:id', reviewController.updateReview);
+router.put('/:id', requireAuth, reviewController.updateReview);
 
 /**
  * @route   DELETE /api/reviews/:id
  * @desc    Delete review
  * @params  id
- * @access  Private (Owner or Admin)
+ * @access  Private (Authenticated User - Gateway validates)
  */
-router.delete('/:id', reviewController.deleteReview);
+router.delete('/:id', requireAuth, reviewController.deleteReview);
 
 /**
  * @route   PATCH /api/reviews/:id/approve
  * @desc    Approve a review
  * @params  id
- * @access  Private (Admin)
+ * @access  Private (Admin only - Gateway validates)
  */
-router.patch('/:id/approve', reviewController.approveReview);
+router.patch('/:id/approve', requireAdmin, reviewController.approveReview);
 
 /**
  * @route   PATCH /api/reviews/:id/reject
  * @desc    Reject a review
  * @params  id
- * @access  Private (Admin)
+ * @access  Private (Admin only - Gateway validates)
  */
-router.patch('/:id/reject', reviewController.rejectReview);
+router.patch('/:id/reject', requireAdmin, reviewController.rejectReview);
 
 module.exports = router;

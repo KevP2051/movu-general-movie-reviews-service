@@ -27,7 +27,9 @@
     "tmdb:reimport-credits": "node src/scripts/reimport-credits.js",
     "db:dump": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-database-dump.ps1",
     "db:dump:external": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-dump-external.ps1",
-    "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1"
+    "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1",
+    "test:gateway": "node test-gateway-integration.js",
+    "test:connection": "node test-connection.js"
   },
   "keywords": [
     "movies",

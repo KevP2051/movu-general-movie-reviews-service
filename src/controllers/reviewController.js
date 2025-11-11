@@ -136,9 +136,13 @@ class ReviewController {
 
   async createReview(req, res) {
     try {
-      // En producción, user_id vendría del token JWT
-      // Por ahora lo tomamos del body
-      const review = await reviewService.createReview(req.body);
+      // El user_id viene del gateway en req.user (ya autenticado)
+      const reviewData = {
+        ...req.body,
+        user_id: req.user.id // Usamos el ID del usuario autenticado por el gateway
+      };
+      
+      const review = await reviewService.createReview(reviewData);
 
       res.status(201).json({
         success: true,
@@ -154,8 +158,8 @@ class ReviewController {
 
   async updateReview(req, res) {
     try {
-      // En producción, userId vendría del token JWT
-      const userId = req.body.user_id || req.user?.id;
+      // El userId viene del gateway en req.user (ya autenticado)
+      const userId = req.user.id;
 
       const review = await reviewService.updateReview(
         req.params.id,
@@ -178,9 +182,9 @@ class ReviewController {
 
   async deleteReview(req, res) {
     try {
-      // En producción, userId y isAdmin vendrían del token JWT
-      const userId = req.body.user_id || req.user?.id;
-      const isAdmin = req.user?.isAdmin || false;
+      // El userId y role vienen del gateway en req.user (ya autenticado)
+      const userId = req.user.id;
+      const isAdmin = req.user.role === 'admin';
 
       const result = await reviewService.deleteReview(
         req.params.id,

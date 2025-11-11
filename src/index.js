@@ -2,18 +2,35 @@ const express = require('express');
 const cors = require('cors');
 const routes = require('./routes');
 const { sequelize } = require('./config/database');
+const corsOptions = require('./config/cors');
+const { extractUserFromHeaders } = require('./middleware/gateway');
 
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions)); // CORS configurado para el gateway
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
+// Request logging middleware con correlation ID
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  const correlationId = req.headers['x-correlation-id'] || 'N/A';
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} [${correlationId}]`);
   next();
+});
+
+// Middleware para extraer información del usuario desde headers del gateway
+app.use(extractUserFromHeaders);
+
+// Health check endpoint (usado por el gateway para verificar el estado del servicio)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    service: 'movies-service',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // Mount API routes

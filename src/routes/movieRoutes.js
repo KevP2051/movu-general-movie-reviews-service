@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const movieController = require('../controllers/movieController');
+const { requireAdmin } = require('../middleware/gateway');
 
 /**
  * @route   GET /api/movies
@@ -56,25 +57,25 @@ router.get('/:id', movieController.getMovieById);
  * @route   POST /api/movies
  * @desc    Create a new movie
  * @body    movie data
- * @access  Private (Admin)
+ * @access  Private (Admin only - Gateway validates)
  */
-router.post('/', movieController.createMovie);
+router.post('/', requireAdmin, movieController.createMovie);
 
 /**
  * @route   PUT /api/movies/:id
  * @desc    Update movie
  * @params  id
  * @body    movie data
- * @access  Private (Admin)
+ * @access  Private (Admin only - Gateway validates)
  */
-router.put('/:id', movieController.updateMovie);
+router.put('/:id', requireAdmin, movieController.updateMovie);
 
 /**
  * @route   DELETE /api/movies/:id
  * @desc    Delete movie
  * @params  id
- * @access  Private (Admin)
+ * @access  Private (Admin only - Gateway validates)
  */
-router.delete('/:id', movieController.deleteMovie);
+router.delete('/:id', requireAdmin, movieController.deleteMovie);
 
 module.exports = router;
