@@ -2,6 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const routes = require('./routes');
 const { sequelize } = require('./config/database');
+const cacheService = require('./services/cacheService');
+const kafkaService = require('./services/kafkaService');
+const resilienceService = require('./services/resilienceService');
+const kafkaConsumerWorker = require('./workers/kafkaConsumerWorker');
 
 const app = express();
 
@@ -29,7 +33,27 @@ app.get('/', (req, res) => {
       reviews: '/api/reviews',
       genres: '/api/genres',
       people: '/api/people',
-      health: '/api/health'
+      health: '/api/health',
+      resilience: '/api/resilience/status'
+    }
+  });
+});
+
+// Resilience status endpoint
+app.get('/api/resilience/status', (req, res) => {
+  const stats = resilienceService.getStats();
+  res.json({
+    success: true,
+    resilience: {
+      databaseStatus: resilienceService.isDatabaseDown ? 'DOWN' : 'UP',
+      circuitBreaker: stats,
+      cache: {
+        connected: cacheService.isConnected
+      },
+      kafka: {
+        producer: kafkaService.producer ? 'CONNECTED' : 'DISCONNECTED',
+        consumer: kafkaService.consumer ? 'CONNECTED' : 'DISCONNECTED'
+      }
     }
   });
 });
@@ -91,18 +115,100 @@ const PORT = process.env.PORT || 3001;
 
 const startServer = async () => {
   try {
-    // Test database connection
-    await sequelize.authenticate();
-    console.log('✓ Database connection established successfully');
+    console.log('🚀 Starting Movu General Movie Reviews Service...\n');
 
-    // Start listening
+    // 1. Test database connection
+    try {
+      await sequelize.authenticate();
+      console.log('✅ Database connection established successfully');
+    } catch (error) {
+      console.warn('⚠️  Database connection failed (will run in degraded mode)');
+      console.warn('   Error:', error.message);
+    }
+
+    // 2. Initialize Redis cache
+    try {
+      await cacheService.connect();
+      console.log('✅ Redis cache connected successfully');
+    } catch (error) {
+      console.warn('⚠️  Redis connection failed (caching disabled)');
+      console.warn('   Error:', error.message);
+    }
+
+    // 3. Initialize Kafka producer
+    try {
+      await kafkaService.initProducer();
+      console.log('✅ Kafka producer initialized successfully');
+    } catch (error) {
+      console.warn('⚠️  Kafka producer initialization failed');
+      console.warn('   Error:', error.message);
+    }
+
+    // 4. Start Kafka consumer worker (for processing queued messages)
+    try {
+      await kafkaConsumerWorker.start();
+      console.log('✅ Kafka consumer worker started successfully');
+    } catch (error) {
+      console.warn('⚠️  Kafka consumer worker failed to start');
+      console.warn('   Error:', error.message);
+    }
+
+    // 5. Start database health monitoring (Circuit Breaker)
+    try {
+      resilienceService.startDatabaseMonitoring(sequelize);
+      console.log('✅ Database health monitoring started');
+    } catch (error) {
+      console.warn('⚠️  Database monitoring failed to start');
+      console.warn('   Error:', error.message);
+    }
+
+    console.log('\n📊 Resilience features:');
+    console.log('   • Circuit Breaker: Active');
+    console.log('   • Redis Cache: ' + (cacheService.isConnected ? 'Active' : 'Disabled'));
+    console.log('   • Kafka Queue: ' + (kafkaService.producer ? 'Active' : 'Disabled'));
+    console.log('   • Auto-recovery: Enabled');
+
+    // 6. Start HTTP server
     app.listen(PORT, () => {
-      console.log(`✓ Server running on port ${PORT}`);
-      console.log(`✓ API available at http://localhost:${PORT}/api`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`\n✅ Server running on port ${PORT}`);
+      console.log(`📍 API available at http://localhost:${PORT}/api`);
+      console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🔄 Resilience status: http://localhost:${PORT}/api/resilience/status`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}\n`);
     });
+
+    // Graceful shutdown
+    const gracefulShutdown = async (signal) => {
+      console.log(`\n${signal} received. Starting graceful shutdown...`);
+      
+      try {
+        // Stop accepting new requests
+        console.log('Stopping Kafka consumer worker...');
+        await kafkaConsumerWorker.stop();
+        
+        console.log('Disconnecting Kafka...');
+        await kafkaService.disconnect();
+        
+        console.log('Disconnecting Redis...');
+        await cacheService.disconnect();
+        
+        console.log('Closing database connection...');
+        await sequelize.close();
+        
+        console.log('✅ Graceful shutdown completed');
+        process.exit(0);
+      } catch (error) {
+        console.error('❌ Error during shutdown:', error);
+        process.exit(1);
+      }
+    };
+
+    // Listen for termination signals
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
   } catch (error) {
-    console.error('✗ Unable to start server:', error);
+    console.error('❌ Unable to start server:', error);
     process.exit(1);
   }
 };

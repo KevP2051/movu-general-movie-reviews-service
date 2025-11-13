@@ -1,27 +1,105 @@
 const reviewRepository = require('../repositories/reviewRepository');
 const movieRepository = require('../repositories/movieRepository');
+const cacheService = require('./cacheService');
+const kafkaService = require('./kafkaService');
+const resilienceService = require('./resilienceService');
 
 class ReviewService {
+  /**
+   * Obtener todas las reseñas con caché
+   */
   async getAllReviews(page, limit, filters) {
-    return await reviewRepository.findAll(page, limit, filters);
-  }
-
-  async getReviewById(reviewId) {
-    const review = await reviewRepository.findById(reviewId);
-    if (!review) {
-      throw new Error('Review not found');
+    const cacheKey = `reviews:all:${page}:${limit}:${JSON.stringify(filters)}`;
+    
+    // Intentar desde caché
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      console.log('✅ Reviews served from cache');
+      return cached;
     }
-    return review;
+
+    // Si no está en caché, usar Circuit Breaker para BD
+    try {
+      const breaker = resilienceService.createDatabaseBreaker();
+      const reviews = await breaker.fire(async () => {
+        return await reviewRepository.findAll(page, limit, filters);
+      });
+
+      // Cachear resultado (30 minutos)
+      await cacheService.set(cacheKey, reviews, 1800);
+      return reviews;
+    } catch (error) {
+      console.log('⚠️ Database unavailable for getAllReviews');
+      // Fallback: devolver array vacío
+      return { reviews: [], total: 0, page, limit };
+    }
   }
 
+  /**
+   * Obtener reseña por ID con caché
+   */
+  async getReviewById(reviewId) {
+    const cacheKey = `review:${reviewId}`;
+    
+    // Intentar desde caché
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      console.log(`✅ Review ${reviewId} served from cache`);
+      return cached;
+    }
+
+    // Si no está en caché, usar Circuit Breaker
+    try {
+      const breaker = resilienceService.createDatabaseBreaker();
+      const review = await breaker.fire(async () => {
+        return await reviewRepository.findById(reviewId);
+      });
+
+      if (!review) {
+        throw new Error('Review not found');
+      }
+
+      // Cachear (1 hora)
+      await cacheService.set(cacheKey, review, 3600);
+      return review;
+    } catch (error) {
+      if (error.message === 'Review not found') throw error;
+      throw new Error('Database unavailable - review not in cache');
+    }
+  }
+
+  /**
+   * Obtener reseñas por película con caché
+   */
   async getReviewsByMovie(movieId, page, limit, status = 'APPROVED') {
+    const cacheKey = `reviews:movie:${movieId}:${page}:${limit}:${status}`;
+    
+    // Intentar desde caché
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      console.log(`✅ Reviews for movie ${movieId} served from cache`);
+      return cached;
+    }
+
     // Verificar que la película existe
     const movie = await movieRepository.findById(movieId);
     if (!movie) {
       throw new Error('Movie not found');
     }
 
-    return await reviewRepository.findByMovie(movieId, page, limit, status);
+    try {
+      const breaker = resilienceService.createDatabaseBreaker();
+      const reviews = await breaker.fire(async () => {
+        return await reviewRepository.findByMovie(movieId, page, limit, status);
+      });
+
+      // Cachear (30 minutos)
+      await cacheService.set(cacheKey, reviews, 1800);
+      return reviews;
+    } catch (error) {
+      console.log(`⚠️ Database unavailable for movie ${movieId} reviews`);
+      return { reviews: [], total: 0, page, limit };
+    }
   }
 
   async getReviewsByUser(userId, page, limit) {
@@ -35,15 +113,45 @@ class ReviewService {
     return await reviewRepository.findByRating(minRating, maxRating, page, limit);
   }
 
+  /**
+   * Obtener estadísticas de película con caché
+   */
   async getMovieStats(movieId) {
+    // Usar método del cacheService
+    const cached = await cacheService.getMovieStats(movieId);
+    if (cached) {
+      console.log(`✅ Stats for movie ${movieId} served from cache`);
+      return cached;
+    }
+
     const movie = await movieRepository.findById(movieId);
     if (!movie) {
       throw new Error('Movie not found');
     }
 
-    return await reviewRepository.getMovieStats(movieId);
+    try {
+      const breaker = resilienceService.createDatabaseBreaker();
+      const stats = await breaker.fire(async () => {
+        return await reviewRepository.getMovieStats(movieId);
+      });
+
+      // Cachear stats (15 minutos)
+      await cacheService.cacheMovieStats(movieId, stats);
+      return stats;
+    } catch (error) {
+      console.log(`⚠️ Database unavailable for movie ${movieId} stats`);
+      return { 
+        movieId, 
+        totalReviews: 0, 
+        averageRating: 0,
+        cached: false
+      };
+    }
   }
 
+  /**
+   * Crear reseña con Kafka para escritura asíncrona
+   */
   async createReview(reviewData) {
     // Validaciones
     if (!reviewData.movie_id || !reviewData.user_id || !reviewData.rating || !reviewData.title) {
@@ -54,10 +162,15 @@ class ReviewService {
       throw new Error('Rating must be between 1 and 10');
     }
 
-    // Verificar que la película existe
-    const movie = await movieRepository.findById(reviewData.movie_id);
-    if (!movie) {
-      throw new Error('Movie not found');
+    // Verificar que la película existe (puede estar en caché)
+    try {
+      const movie = await movieRepository.findById(reviewData.movie_id);
+      if (!movie) {
+        throw new Error('Movie not found');
+      }
+    } catch (error) {
+      if (error.message === 'Movie not found') throw error;
+      // Si BD está caída, continuar (asumimos que película existe)
     }
 
     // Establecer estado por defecto
@@ -65,13 +178,52 @@ class ReviewService {
       reviewData.status = 'PENDING';
     }
 
-    return await reviewRepository.create(reviewData);
+    // Si la BD está caída, enviar a Kafka
+    if (resilienceService.isDatabaseDown) {
+      console.log('⚠️ Database down - Sending review creation to Kafka queue');
+      
+      await kafkaService.sendReviewCreate(reviewData);
+
+      return {
+        message: 'Review creation queued successfully',
+        queued: true,
+        data: reviewData
+      };
+    }
+
+    // Si la BD está disponible, crear directamente
+    try {
+      const review = await reviewRepository.create(reviewData);
+      
+      // Invalidar caché relacionado
+      await cacheService.delPattern(`reviews:movie:${reviewData.movie_id}:*`);
+      await cacheService.delPattern(`reviews:all:*`);
+      await cacheService.del(`movie:stats:${reviewData.movie_id}`);
+
+      return review;
+    } catch (error) {
+      // Si falla, enviar a Kafka como fallback
+      console.log('⚠️ Database error - Sending review creation to Kafka as fallback');
+      await kafkaService.sendReviewCreate(reviewData);
+
+      return {
+        message: 'Review creation queued due to error',
+        queued: true,
+        data: reviewData
+      };
+    }
   }
 
+  /**
+   * Actualizar reseña con Kafka para escritura asíncrona
+   */
   async updateReview(reviewId, reviewData, userId) {
-    const existingReview = await reviewRepository.findById(reviewId);
-    if (!existingReview) {
-      throw new Error('Review not found');
+    // Intentar obtener la reseña existente (puede estar en caché)
+    let existingReview;
+    try {
+      existingReview = await this.getReviewById(reviewId);
+    } catch (error) {
+      throw new Error('Review not found or database unavailable');
     }
 
     // Verificar que el usuario es dueño de la reseña
@@ -84,13 +236,55 @@ class ReviewService {
       throw new Error('Rating must be between 1 and 10');
     }
 
-    return await reviewRepository.update(reviewId, reviewData);
+    // Si la BD está caída, enviar a Kafka
+    if (resilienceService.isDatabaseDown) {
+      console.log(`⚠️ Database down - Sending review ${reviewId} update to Kafka queue`);
+      
+      await kafkaService.sendReviewUpdate(reviewId, reviewData);
+
+      return {
+        message: 'Review update queued successfully',
+        queued: true,
+        reviewId,
+        data: reviewData
+      };
+    }
+
+    // Si la BD está disponible, actualizar directamente
+    try {
+      const updatedReview = await reviewRepository.update(reviewId, reviewData);
+      
+      // Invalidar caché relacionado
+      await cacheService.del(`review:${reviewId}`);
+      await cacheService.delPattern(`reviews:movie:${existingReview.movie_id}:*`);
+      await cacheService.delPattern(`reviews:all:*`);
+      await cacheService.del(`movie:stats:${existingReview.movie_id}`);
+
+      return updatedReview;
+    } catch (error) {
+      // Si falla, enviar a Kafka como fallback
+      console.log(`⚠️ Database error - Sending review ${reviewId} update to Kafka`);
+      await kafkaService.sendReviewUpdate(reviewId, reviewData);
+
+      return {
+        message: 'Review update queued due to error',
+        queued: true,
+        reviewId,
+        data: reviewData
+      };
+    }
   }
 
+  /**
+   * Eliminar reseña con Kafka para escritura asíncrona
+   */
   async deleteReview(reviewId, userId, isAdmin = false) {
-    const existingReview = await reviewRepository.findById(reviewId);
-    if (!existingReview) {
-      throw new Error('Review not found');
+    // Intentar obtener la reseña existente
+    let existingReview;
+    try {
+      existingReview = await this.getReviewById(reviewId);
+    } catch (error) {
+      throw new Error('Review not found or database unavailable');
     }
 
     // Solo el dueño o un admin pueden eliminar
@@ -98,20 +292,118 @@ class ReviewService {
       throw new Error('Unauthorized: You can only delete your own reviews');
     }
 
-    const deleted = await reviewRepository.delete(reviewId);
-    if (!deleted) {
-      throw new Error('Failed to delete review');
+    // Si la BD está caída, enviar a Kafka
+    if (resilienceService.isDatabaseDown) {
+      console.log(`⚠️ Database down - Sending review ${reviewId} deletion to Kafka queue`);
+      
+      await kafkaService.sendReviewDelete(reviewId);
+
+      return {
+        message: 'Review deletion queued successfully',
+        queued: true,
+        reviewId
+      };
     }
 
-    return { message: 'Review deleted successfully' };
+    // Si la BD está disponible, eliminar directamente
+    try {
+      const deleted = await reviewRepository.delete(reviewId);
+      if (!deleted) {
+        throw new Error('Failed to delete review');
+      }
+
+      // Invalidar caché relacionado
+      await cacheService.del(`review:${reviewId}`);
+      await cacheService.delPattern(`reviews:movie:${existingReview.movie_id}:*`);
+      await cacheService.delPattern(`reviews:all:*`);
+      await cacheService.del(`movie:stats:${existingReview.movie_id}`);
+
+      return { message: 'Review deleted successfully' };
+    } catch (error) {
+      // Si falla, enviar a Kafka como fallback
+      console.log(`⚠️ Database error - Sending review ${reviewId} deletion to Kafka`);
+      await kafkaService.sendReviewDelete(reviewId);
+
+      return {
+        message: 'Review deletion queued due to error',
+        queued: true,
+        reviewId
+      };
+    }
   }
 
+  /**
+   * Aprobar reseña (admin) con Kafka
+   */
   async approveReview(reviewId) {
-    return await reviewRepository.updateStatus(reviewId, 'APPROVED');
+    // Si la BD está caída, enviar a Kafka
+    if (resilienceService.isDatabaseDown) {
+      console.log(`⚠️ Database down - Sending review ${reviewId} approval to Kafka queue`);
+      
+      await kafkaService.sendReviewUpdate(reviewId, { status: 'APPROVED' });
+
+      return {
+        message: 'Review approval queued successfully',
+        queued: true,
+        reviewId
+      };
+    }
+
+    try {
+      const result = await reviewRepository.updateStatus(reviewId, 'APPROVED');
+      
+      // Invalidar caché
+      await cacheService.del(`review:${reviewId}`);
+      await cacheService.delPattern(`reviews:*`);
+
+      return result;
+    } catch (error) {
+      console.log(`⚠️ Database error - Queueing review ${reviewId} approval`);
+      await kafkaService.sendReviewUpdate(reviewId, { status: 'APPROVED' });
+
+      return {
+        message: 'Review approval queued due to error',
+        queued: true,
+        reviewId
+      };
+    }
   }
 
+  /**
+   * Rechazar reseña (admin) con Kafka
+   */
   async rejectReview(reviewId) {
-    return await reviewRepository.updateStatus(reviewId, 'REJECTED');
+    // Si la BD está caída, enviar a Kafka
+    if (resilienceService.isDatabaseDown) {
+      console.log(`⚠️ Database down - Sending review ${reviewId} rejection to Kafka queue`);
+      
+      await kafkaService.sendReviewUpdate(reviewId, { status: 'REJECTED' });
+
+      return {
+        message: 'Review rejection queued successfully',
+        queued: true,
+        reviewId
+      };
+    }
+
+    try {
+      const result = await reviewRepository.updateStatus(reviewId, 'REJECTED');
+      
+      // Invalidar caché
+      await cacheService.del(`review:${reviewId}`);
+      await cacheService.delPattern(`reviews:*`);
+
+      return result;
+    } catch (error) {
+      console.log(`⚠️ Database error - Queueing review ${reviewId} rejection`);
+      await kafkaService.sendReviewUpdate(reviewId, { status: 'REJECTED' });
+
+      return {
+        message: 'Review rejection queued due to error',
+        queued: true,
+        reviewId
+      };
+    }
   }
 }
 
