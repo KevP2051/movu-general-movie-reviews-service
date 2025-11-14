@@ -29,6 +29,11 @@ Microservicio de reseñas de películas para la plataforma Movu. Proporciona una
 - **Importación TMDb**: Alimentar la BD automáticamente desde TMDb API
 - **Paginación**: En todos los endpoints que retornan listas
 - **Validación**: Middleware de validación de datos
+- **Sistema de Resiliencia**: Alta disponibilidad con Redis y Kafka
+  - **Redis Cache**: Lecturas rápidas cuando BD está caída
+  - **Kafka Queue**: Escrituras encoladas cuando BD está caída
+  - **Circuit Breaker**: Detección automática de fallos
+  - **Auto-recovery**: Worker procesa cola cuando BD se recupera
 
 ---
 
@@ -36,6 +41,8 @@ Microservicio de reseñas de películas para la plataforma Movu. Proporciona una
 
 - **Node.js**: v16 o superior
 - **PostgreSQL**: v12 o superior
+- **Redis**: v6 o superior (para sistema de resiliencia)
+- **Kafka**: v2.8 o superior (para sistema de resiliencia)
 - **npm**: v8 o superior
 - **TMDb API Key**: Para importar datos (opcional)
 
@@ -81,7 +88,62 @@ NODE_ENV=development
 
 # TMDb API (opcional, para importar datos)
 TMDB_API_KEY=
+
+# Redis (Sistema de Resiliencia)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+# Kafka (Sistema de Resiliencia)
+KAFKA_BROKERS=localhost:9092
 ```
+
+---
+
+## 🛡️ Sistema de Resiliencia (Redis + Kafka)
+
+El servicio implementa un sistema robusto de **alta disponibilidad** que permite seguir funcionando aunque PostgreSQL esté caída.
+
+### Probar el Sistema de Resiliencia
+
+```powershell
+# Verificar que Redis y Kafka están funcionando
+npm run test:resilience
+```
+
+Este comando ejecuta una demo completa que:
+- ✅ Prueba conexión Redis
+- ✅ Prueba conexión Kafka
+- ✅ Demuestra Circuit Breaker
+- ✅ Explica toda la arquitectura
+
+### Cómo Funciona
+
+**Cuando la BD está disponible:**
+- Operaciones normales
+- Datos se cachean en Redis para lecturas rápidas
+
+**Cuando la BD está CAÍDA:**
+- **Lecturas**: Se sirven desde Redis (caché)
+- **Escrituras**: Se encolan en Kafka
+- Usuario recibe respuesta inmediata
+
+**Cuando la BD se recupera:**
+- Worker procesa automáticamente la cola de Kafka
+- Sincroniza todas las operaciones pendientes
+
+### Monitoreo
+
+```powershell
+# Ver estado del sistema de resiliencia
+curl http://localhost:3001/api/resilience/status
+```
+
+### Documentación Completa
+
+- **[docs/RESILIENCE.md](docs/RESILIENCE.md)**: Arquitectura y testing
+- **[docs/EXPLICACION_REDIS_KAFKA.md](docs/EXPLICACION_REDIS_KAFKA.md)**: Explicación detallada de Redis, Kafka y TTLs
+- **[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)**: Estado actual de implementación
 
 ### 2. Base de Datos
 

@@ -93,4 +93,13 @@ router.patch('/:id/approve', reviewController.approveReview);
  */
 router.patch('/:id/reject', reviewController.rejectReview);
 
+/**
+ * @route   PATCH /api/reviews/:id/status
+ * @desc    Change review status (flexible: PENDING, APPROVED, REJECTED)
+ * @params  id
+ * @body    { status: 'PENDING' | 'APPROVED' | 'REJECTED', isAdmin: true }
+ * @access  Private (Admin)
+ */
+router.patch('/:id/status', reviewController.changeReviewStatus);
+
 module.exports = router;
