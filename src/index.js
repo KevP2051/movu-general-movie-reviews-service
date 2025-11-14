@@ -2,10 +2,15 @@ const express = require('express');
 const cors = require('cors');
 const routes = require('./routes');
 const { sequelize } = require('./config/database');
-const cacheService = require('./services/cacheService');
-const kafkaService = require('./services/kafkaService');
-const resilienceService = require('./services/resilienceService');
-const kafkaConsumerWorker = require('./workers/kafkaConsumerWorker');
+const { getCacheService } = require('./services/cacheService');
+const { getKafkaService } = require('./services/kafkaService');
+const { getResilienceService } = require('./services/resilienceService');
+const { getKafkaConsumerWorker } = require('./workers/kafkaConsumerWorker');
+
+const cacheService = getCacheService();
+const kafkaService = getKafkaService();
+const resilienceService = getResilienceService();
+const kafkaConsumerWorker = getKafkaConsumerWorker();
 
 const app = express();
 
@@ -45,14 +50,15 @@ app.get('/api/resilience/status', (req, res) => {
   res.json({
     success: true,
     resilience: {
-      databaseStatus: resilienceService.isDatabaseDown ? 'DOWN' : 'UP',
-      circuitBreaker: stats,
+      databaseStatus: resilienceService.isDatabaseAvailable() ? 'UP' : 'DOWN',
+      circuitBreakers: stats.breakers,
+      totalBreakers: stats.totalBreakers,
       cache: {
-        connected: cacheService.isConnected
+        status: cacheService.redis && cacheService.redis.status === 'ready' ? 'CONNECTED' : 'DISCONNECTED'
       },
       kafka: {
-        producer: kafkaService.producer ? 'CONNECTED' : 'DISCONNECTED',
-        consumer: kafkaService.consumer ? 'CONNECTED' : 'DISCONNECTED'
+        producer: kafkaService.isAvailable() ? 'CONNECTED' : 'DISCONNECTED',
+        consumer: kafkaConsumerWorker.isRunning ? 'RUNNING' : 'STOPPED'
       }
     }
   });
@@ -128,8 +134,12 @@ const startServer = async () => {
 
     // 2. Initialize Redis cache
     try {
-      await cacheService.connect();
-      console.log('✅ Redis cache connected successfully');
+      const isRedisAvailable = await cacheService.isAvailable();
+      if (isRedisAvailable) {
+        console.log('✅ Redis cache connected successfully');
+      } else {
+        console.warn('⚠️  Redis connection failed (caching disabled)');
+      }
     } catch (error) {
       console.warn('⚠️  Redis connection failed (caching disabled)');
       console.warn('   Error:', error.message);
@@ -155,7 +165,7 @@ const startServer = async () => {
 
     // 5. Start database health monitoring (Circuit Breaker)
     try {
-      resilienceService.startDatabaseMonitoring(sequelize);
+      resilienceService.startDatabaseMonitoring(5000);
       console.log('✅ Database health monitoring started');
     } catch (error) {
       console.warn('⚠️  Database monitoring failed to start');
@@ -164,8 +174,8 @@ const startServer = async () => {
 
     console.log('\n📊 Resilience features:');
     console.log('   • Circuit Breaker: Active');
-    console.log('   • Redis Cache: ' + (cacheService.isConnected ? 'Active' : 'Disabled'));
-    console.log('   • Kafka Queue: ' + (kafkaService.producer ? 'Active' : 'Disabled'));
+    console.log('   • Redis Cache: ' + (await cacheService.isAvailable() ? 'Active' : 'Disabled'));
+    console.log('   • Kafka Queue: ' + (kafkaService.isAvailable() ? 'Active' : 'Disabled'));
     console.log('   • Auto-recovery: Enabled');
 
     // 6. Start HTTP server

@@ -232,6 +232,39 @@ class ReviewController {
       });
     }
   }
+
+  async changeReviewStatus(req, res) {
+    try {
+      // En producción, isAdmin vendría del token JWT
+      const isAdmin = req.user?.isAdmin || req.body.isAdmin || false;
+      const newStatus = req.body.status;
+
+      if (!newStatus) {
+        return res.status(400).json({
+          success: false,
+          error: 'Status is required. Valid values: PENDING, APPROVED, REJECTED'
+        });
+      }
+
+      const result = await reviewService.changeReviewStatus(
+        req.params.id,
+        newStatus,
+        isAdmin
+      );
+
+      res.status(200).json({
+        success: true,
+        ...result
+      });
+    } catch (error) {
+      const status = error.message.includes('Unauthorized') ? 403 : 
+                     error.message.includes('not found') ? 404 : 400;
+      res.status(status).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new ReviewController();

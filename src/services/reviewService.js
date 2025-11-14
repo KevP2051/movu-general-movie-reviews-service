@@ -1,8 +1,12 @@
 const reviewRepository = require('../repositories/reviewRepository');
 const movieRepository = require('../repositories/movieRepository');
-const cacheService = require('./cacheService');
-const kafkaService = require('./kafkaService');
-const resilienceService = require('./resilienceService');
+const { getCacheService } = require('./cacheService');
+const { getKafkaService } = require('./kafkaService');
+const { getResilienceService } = require('./resilienceService');
+
+const cacheService = getCacheService();
+const kafkaService = getKafkaService();
+const resilienceService = getResilienceService();
 
 class ReviewService {
   /**
@@ -179,7 +183,7 @@ class ReviewService {
     }
 
     // Si la BD está caída, enviar a Kafka
-    if (resilienceService.isDatabaseDown) {
+    if (!resilienceService.isDatabaseAvailable()) {
       console.log('⚠️ Database down - Sending review creation to Kafka queue');
       
       await kafkaService.sendReviewCreate(reviewData);
@@ -237,7 +241,7 @@ class ReviewService {
     }
 
     // Si la BD está caída, enviar a Kafka
-    if (resilienceService.isDatabaseDown) {
+    if (!resilienceService.isDatabaseAvailable()) {
       console.log(`⚠️ Database down - Sending review ${reviewId} update to Kafka queue`);
       
       await kafkaService.sendReviewUpdate(reviewId, reviewData);
@@ -293,7 +297,7 @@ class ReviewService {
     }
 
     // Si la BD está caída, enviar a Kafka
-    if (resilienceService.isDatabaseDown) {
+    if (!resilienceService.isDatabaseAvailable()) {
       console.log(`⚠️ Database down - Sending review ${reviewId} deletion to Kafka queue`);
       
       await kafkaService.sendReviewDelete(reviewId);
@@ -337,7 +341,7 @@ class ReviewService {
    */
   async approveReview(reviewId) {
     // Si la BD está caída, enviar a Kafka
-    if (resilienceService.isDatabaseDown) {
+    if (!resilienceService.isDatabaseAvailable()) {
       console.log(`⚠️ Database down - Sending review ${reviewId} approval to Kafka queue`);
       
       await kafkaService.sendReviewUpdate(reviewId, { status: 'APPROVED' });
@@ -374,7 +378,7 @@ class ReviewService {
    */
   async rejectReview(reviewId) {
     // Si la BD está caída, enviar a Kafka
-    if (resilienceService.isDatabaseDown) {
+    if (!resilienceService.isDatabaseAvailable()) {
       console.log(`⚠️ Database down - Sending review ${reviewId} rejection to Kafka queue`);
       
       await kafkaService.sendReviewUpdate(reviewId, { status: 'REJECTED' });
@@ -402,6 +406,80 @@ class ReviewService {
         message: 'Review rejection queued due to error',
         queued: true,
         reviewId
+      };
+    }
+  }
+
+  /**
+   * Cambiar estado de reseña (admin) - Método flexible
+   * Permite cambiar a cualquier estado: PENDING, APPROVED, REJECTED
+   */
+  async changeReviewStatus(reviewId, newStatus, isAdmin = false) {
+    // Validar que el usuario es admin
+    if (!isAdmin) {
+      throw new Error('Unauthorized: Only admins can change review status');
+    }
+
+    // Validar que el estado es válido
+    const validStatuses = ['PENDING', 'APPROVED', 'REJECTED'];
+    if (!validStatuses.includes(newStatus)) {
+      throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    // Verificar que la reseña existe
+    let existingReview;
+    try {
+      existingReview = await this.getReviewById(reviewId);
+    } catch (error) {
+      throw new Error('Review not found or database unavailable');
+    }
+
+    // Si el estado es el mismo, no hacer nada
+    if (existingReview.status === newStatus) {
+      return {
+        message: `Review is already ${newStatus}`,
+        review: existingReview
+      };
+    }
+
+    // Si la BD está caída, enviar a Kafka
+    if (!resilienceService.isDatabaseAvailable()) {
+      console.log(`⚠️ Database down - Sending review ${reviewId} status change to Kafka queue`);
+      
+      await kafkaService.sendReviewUpdate(reviewId, { status: newStatus });
+
+      return {
+        message: `Review status change to ${newStatus} queued successfully`,
+        queued: true,
+        reviewId,
+        newStatus
+      };
+    }
+
+    // Si la BD está disponible, actualizar directamente
+    try {
+      const result = await reviewRepository.updateStatus(reviewId, newStatus);
+      
+      // Invalidar caché relacionado
+      await cacheService.del(`review:${reviewId}`);
+      await cacheService.delPattern(`reviews:movie:${existingReview.movie_id}:*`);
+      await cacheService.delPattern(`reviews:all:*`);
+      await cacheService.del(`movie:stats:${existingReview.movie_id}`);
+
+      return {
+        message: `Review status changed to ${newStatus} successfully`,
+        review: result
+      };
+    } catch (error) {
+      // Si falla, enviar a Kafka como fallback
+      console.log(`⚠️ Database error - Queueing review ${reviewId} status change`);
+      await kafkaService.sendReviewUpdate(reviewId, { status: newStatus });
+
+      return {
+        message: `Review status change to ${newStatus} queued due to error`,
+        queued: true,
+        reviewId,
+        newStatus
       };
     }
   }

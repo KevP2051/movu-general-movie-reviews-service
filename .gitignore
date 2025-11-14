@@ -33,3 +33,9 @@ build/
 # Testing
 coverage/
 .nyc_output/
+
+# Documentation (local only)
+docs/RESILIENCE.md
+docs/EXPLICACION_REDIS_KAFKA.md
+docs/MODERATION_GUIDE.md
+

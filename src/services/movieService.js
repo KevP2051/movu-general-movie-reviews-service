@@ -177,7 +177,7 @@ class MovieService {
     }
 
     // Si la BD está caída, enviar a Kafka
-    if (resilienceService.isDatabaseDown) {
+    if (!resilienceService.isDatabaseAvailable()) {
       console.log('⚠️ Database down - Sending movie creation to Kafka queue');
       
       await kafkaService.sendMovieUpdate(null, {
@@ -231,7 +231,7 @@ class MovieService {
    */
   async updateMovie(movieId, movieData) {
     // Si la BD está caída, enviar a Kafka
-    if (resilienceService.isDatabaseDown) {
+    if (!resilienceService.isDatabaseAvailable()) {
       console.log(`⚠️ Database down - Sending movie ${movieId} update to Kafka queue`);
       
       await kafkaService.sendMovieUpdate(movieId, movieData);
