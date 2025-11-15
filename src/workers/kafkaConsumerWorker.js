@@ -121,16 +121,11 @@ class KafkaConsumerWorker {
       // Inicializar consumidor
       await kafkaService.initConsumer('movie-reviews-worker');
 
-      // Suscribirse a los topics
-      await kafkaService.subscribe(
-        kafkaService.TOPICS.REVIEWS,
-        this.processReviewMessage.bind(this)
-      );
-
-      await kafkaService.subscribe(
-        kafkaService.TOPICS.MOVIES,
-        this.processMovieMessage.bind(this)
-      );
+      // Suscribirse a todos los topics de una vez
+      await kafkaService.subscribeToTopics({
+        [kafkaService.TOPICS.REVIEWS]: this.processReviewMessage.bind(this),
+        [kafkaService.TOPICS.MOVIES]: this.processMovieMessage.bind(this)
+      });
 
       this.isRunning = true;
       console.log('✓ Kafka consumer worker started successfully');
