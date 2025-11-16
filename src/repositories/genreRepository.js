@@ -44,7 +44,7 @@ class GenreRepository {
           through: { attributes: [] }
         }
       ],
-      group: ['Genre.genre_id'],
+      group: ['Genre.genre_id', 'Genre.name'],
       order: [['name', 'ASC']]
     });
   }

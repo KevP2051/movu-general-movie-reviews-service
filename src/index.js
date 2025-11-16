@@ -5,11 +5,13 @@ const { sequelize } = require('./config/database');
 const { getCacheService } = require('./services/cacheService');
 const { getKafkaService } = require('./services/kafkaService');
 const { getResilienceService } = require('./services/resilienceService');
+const { getCacheWarmingService } = require('./services/cacheWarmingService');
 const { getKafkaConsumerWorker } = require('./workers/kafkaConsumerWorker');
 
 const cacheService = getCacheService();
 const kafkaService = getKafkaService();
 const resilienceService = getResilienceService();
+const cacheWarmingService = getCacheWarmingService();
 const kafkaConsumerWorker = getKafkaConsumerWorker();
 
 const app = express();
@@ -126,9 +128,9 @@ const startServer = async () => {
     // 1. Test database connection
     try {
       await sequelize.authenticate();
-      console.log('✅ Database connection established successfully');
+      console.log('Database connection established successfully');
     } catch (error) {
-      console.warn('⚠️  Database connection failed (will run in degraded mode)');
+      console.warn('Database connection failed (will run in degraded mode)');
       console.warn('   Error:', error.message);
     }
 
@@ -136,12 +138,12 @@ const startServer = async () => {
     try {
       const isRedisAvailable = await cacheService.isAvailable();
       if (isRedisAvailable) {
-        console.log('✅ Redis cache connected successfully');
+        console.log('Redis cache connected successfully');
       } else {
-        console.warn('⚠️  Redis connection failed (caching disabled)');
+        console.warn('Redis connection failed (caching disabled)');
       }
     } catch (error) {
-      console.warn('⚠️  Redis connection failed (caching disabled)');
+      console.warn('Redis connection failed (caching disabled)');
       console.warn('   Error:', error.message);
     }
 
@@ -172,13 +174,33 @@ const startServer = async () => {
       console.warn('   Error:', error.message);
     }
 
+    // 6. Warm cache automatically (only if DB is available)
+    const isDbAvailable = resilienceService.isDatabaseAvailable();
+    const isCacheAvailable = await cacheService.isAvailable();
+    
+    if (isDbAvailable && isCacheAvailable) {
+      console.log('\n🔥 Precalentando caché automáticamente...');
+      // Ejecutar en background para no bloquear el inicio del servidor
+      cacheWarmingService.warmAllCache().catch(err => {
+        console.warn('⚠️  Cache warming failed (server will continue):', err.message);
+      });
+    } else {
+      if (!isDbAvailable) {
+        console.warn('⚠️  Skipping cache warming - Database not available');
+      }
+      if (!isCacheAvailable) {
+        console.warn('⚠️  Skipping cache warming - Redis not available');
+      }
+    }
+
     console.log('\n📊 Resilience features:');
     console.log('   • Circuit Breaker: Active');
-    console.log('   • Redis Cache: ' + (await cacheService.isAvailable() ? 'Active' : 'Disabled'));
+    console.log('   • Redis Cache: ' + (isCacheAvailable ? 'Active' : 'Disabled'));
     console.log('   • Kafka Queue: ' + (kafkaService.isAvailable() ? 'Active' : 'Disabled'));
     console.log('   • Auto-recovery: Enabled');
+    console.log('   • Auto cache-warming: ' + (isDbAvailable && isCacheAvailable ? 'Enabled' : 'Disabled'));
 
-    // 6. Start HTTP server
+    // 7. Start HTTP server
     app.listen(PORT, () => {
       console.log(`\n✅ Server running on port ${PORT}`);
       console.log(`📍 API available at http://localhost:${PORT}/api`);
