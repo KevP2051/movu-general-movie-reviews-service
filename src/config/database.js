@@ -9,7 +9,7 @@ const config = {
   port: process.env.DB_PORT,
   dialect: 'postgres',
   schema: process.env.DB_SCHEMA,
-  logging: false,
+  logging: false, // Deshabilitado - demasiado verbose
 };
 
 const sequelize = new Sequelize(

@@ -91,6 +91,7 @@ class MovieService {
   async getMoviesByGenre(genreId, page, limit) {
     const cacheKey = `movies:genre:${genreId}:page:${page}:limit:${limit}`;
     
+    // Verificar caché primero
     const cached = await cacheService.get(cacheKey);
     if (cached) {
       console.log(`✓ Serving movies for genre ${genreId} from cache`);

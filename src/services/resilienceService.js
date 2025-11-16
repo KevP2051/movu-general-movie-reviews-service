@@ -11,7 +11,7 @@ class ResilienceService {
   /**
    * Crear un Circuit Breaker para operaciones de base de datos
    */
-  createDatabaseBreaker(name, operation, options = {}) {
+  createDatabaseBreaker(name, options = {}) {
     const defaultOptions = {
       timeout: 3000, // 3 segundos timeout
       errorThresholdPercentage: 50, // 50% de errores para abrir el circuito
@@ -22,7 +22,11 @@ class ResilienceService {
     };
 
     const breakerOptions = { ...defaultOptions, ...options };
-    const breaker = new CircuitBreaker(operation, breakerOptions);
+    // Crear breaker con una función que ejecuta la operación pasada como parámetro
+    const breaker = new CircuitBreaker(async (operation) => {
+      // Ejecutar la operación que se pasa dinámicamente
+      return await operation();
+    }, breakerOptions);
 
     // Eventos del Circuit Breaker
     breaker.on('open', () => {
@@ -164,11 +168,11 @@ class ResilienceService {
       let breaker = this.getBreaker(breakerName);
       
       if (!breaker) {
-        breaker = this.createDatabaseBreaker(breakerName, operation);
+        breaker = this.createDatabaseBreaker(breakerName);
       }
 
-      // Ejecutar operación protegida por Circuit Breaker
-      return await breaker.fire();
+      // Ejecutar operación protegida por Circuit Breaker con la operación como parámetro
+      return await breaker.fire(operation);
     } catch (error) {
       // Si el circuito está abierto o hay error, usar fallback
       console.log(`⚠️ Using fallback for ${breakerName}:`, error.message);
