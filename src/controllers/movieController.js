@@ -11,7 +11,9 @@ class MovieController {
       res.status(200).json({
         success: true,
         data: result.movies,
-        pagination: result.pagination
+        pagination: result.pagination,
+        fromCache: result.fromCache,
+        degradedMode: result.degradedMode
       });
     } catch (error) {
       res.status(500).json({
@@ -48,7 +50,9 @@ class MovieController {
       res.status(200).json({
         success: true,
         data: result.movies,
-        pagination: result.pagination
+        pagination: result.pagination,
+        fromCache: result.fromCache,
+        degradedMode: result.degradedMode
       });
     } catch (error) {
       res.status(500).json({

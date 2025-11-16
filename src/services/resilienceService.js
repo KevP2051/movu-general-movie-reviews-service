@@ -13,7 +13,7 @@ class ResilienceService {
    */
   createDatabaseBreaker(name, options = {}) {
     const defaultOptions = {
-      timeout: 3000, // 3 segundos timeout
+      timeout: 1000, // 1 segundo timeout (reducido de 3s para fallar rápido)
       errorThresholdPercentage: 50, // 50% de errores para abrir el circuito
       resetTimeout: 10000, // 10 segundos antes de intentar de nuevo
       rollingCountTimeout: 10000, // Ventana de 10 segundos
@@ -110,6 +110,10 @@ class ResilienceService {
       } else if (isHealthy && this.isDatabaseDown) {
         console.log('🟢 Database health check passed - Deactivating degraded mode');
         this.isDatabaseDown = false;
+        
+        // IMPORTANTE: Resetear todos los Circuit Breakers para que vuelvan a intentar
+        console.log('🔄 Resetting all Circuit Breakers to allow reconnection');
+        this.resetAllBreakers();
       }
     }, intervalMs);
 
@@ -174,14 +178,19 @@ class ResilienceService {
       // Ejecutar operación protegida por Circuit Breaker con la operación como parámetro
       return await breaker.fire(operation);
     } catch (error) {
-      // Si el circuito está abierto o hay error, usar fallback
-      console.log(`⚠️ Using fallback for ${breakerName}:`, error.message);
+      // Si el circuito está abierto o hay error, lanzar excepción para que el servicio maneje
+      console.log(`⚠️ Circuit breaker error for ${breakerName}:`, error.message);
       
-      if (typeof fallback === 'function') {
-        return await fallback(fallbackData);
+      // Si hay fallback, usarlo
+      if (fallback) {
+        if (typeof fallback === 'function') {
+          return await fallback(fallbackData);
+        }
+        return fallback;
       }
       
-      return fallback;
+      // Si no hay fallback, lanzar error para que el servicio decida qué hacer
+      throw error;
     }
   }
 }

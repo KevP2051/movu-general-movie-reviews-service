@@ -14,16 +14,44 @@ class MovieService {
   async getAllMovies(page, limit) {
     const cacheKey = `movies:all:page:${page}:limit:${limit}`;
     
+    console.log(`[DEBUG] getAllMovies - Looking for cache key: ${cacheKey}`);
+    
     // Intentar obtener del caché primero
     const cached = await cacheService.get(cacheKey);
     if (cached) {
-      console.log('✓ Serving movies from cache');
-      return cached;
+      console.log(`✓ Serving ${cached.movies?.length || 0} movies from cache`);
+      return { ...cached, fromCache: true, degradedMode: false };
     }
+    
+    console.log('[DEBUG] Cache miss - Attempting database query');
 
     // Si no está en caché, intentar obtener de BD con Circuit Breaker
-    const fallback = async () => {
-      console.log('⚠️ Database unavailable - Returning empty result');
+    try {
+      const operation = async () => {
+        console.log('[DEBUG] Executing database query...');
+        const result = await movieRepository.findAll(page, limit);
+        console.log(`[DEBUG] Got ${result.movies?.length || 0} movies from DB - Caching with key: ${cacheKey}`);
+        // Guardar en caché
+        await cacheService.cacheMovies(cacheKey, result, cacheService.POPULAR_MOVIES_TTL);
+        console.log(`[DEBUG] Movies cached successfully with TTL: ${cacheService.POPULAR_MOVIES_TTL}s`);
+        return { ...result, fromCache: false, degradedMode: false };
+      };
+
+      return await resilienceService.executeWithFallback(
+        'getAllMovies',
+        operation,
+        null
+      );
+    } catch (error) {
+      // Si Circuit Breaker está abierto, buscar en caché cualquier versión
+      console.log('⚠️ Database unavailable - Searching for any cached version');
+      const cachedFallback = await cacheService.get(cacheKey);
+      if (cachedFallback) {
+        console.log('✓ Serving movies from cache (fallback)');
+        return { ...cachedFallback, fromCache: true, degradedMode: true };
+      }
+      
+      console.log('⚠️ No cache available - Returning empty result');
       return {
         movies: [],
         pagination: {
@@ -35,20 +63,7 @@ class MovieService {
         fromCache: false,
         degradedMode: true
       };
-    };
-
-    const operation = async () => {
-      const result = await movieRepository.findAll(page, limit);
-      // Guardar en caché
-      await cacheService.cacheMovies(cacheKey, result, cacheService.POPULAR_MOVIES_TTL);
-      return result;
-    };
-
-    return await resilienceService.executeWithFallback(
-      'getAllMovies',
-      operation,
-      fallback
-    );
+    }
   }
 
   /**
@@ -63,26 +78,26 @@ class MovieService {
     }
 
     // Si no está en caché, intentar obtener de BD con Circuit Breaker
-    const fallback = async () => {
+    try {
+      const operation = async () => {
+        const movie = await movieRepository.findById(movieId);
+        if (!movie) {
+          throw new Error('Movie not found');
+        }
+        // Guardar en caché
+        await cacheService.cacheMovieDetails(movieId, movie);
+        return movie;
+      };
+
+      return await resilienceService.executeWithFallback(
+        'getMovieById',
+        operation,
+        null
+      );
+    } catch (error) {
       console.log(`⚠️ Database unavailable - Movie ${movieId} not in cache`);
       throw new Error('Movie not available - Database is down');
-    };
-
-    const operation = async () => {
-      const movie = await movieRepository.findById(movieId);
-      if (!movie) {
-        throw new Error('Movie not found');
-      }
-      // Guardar en caché
-      await cacheService.cacheMovieDetails(movieId, movie);
-      return movie;
-    };
-
-    return await resilienceService.executeWithFallback(
-      'getMovieById',
-      operation,
-      fallback
-    );
+    }
   }
 
   /**
@@ -95,28 +110,37 @@ class MovieService {
     const cached = await cacheService.get(cacheKey);
     if (cached) {
       console.log(`✓ Serving movies for genre ${genreId} from cache`);
-      return cached;
+      return { ...cached, fromCache: true, degradedMode: false };
     }
 
-    const operation = async () => {
-      const result = await movieRepository.findByGenre(genreId, page, limit);
-      await cacheService.cacheMovies(cacheKey, result);
-      return result;
-    };
+    try {
+      const operation = async () => {
+        const result = await movieRepository.findByGenre(genreId, page, limit);
+        await cacheService.cacheMovies(cacheKey, result);
+        return { ...result, fromCache: false, degradedMode: false };
+      };
 
-    const fallback = async () => {
+      return await resilienceService.executeWithFallback(
+        'getMoviesByGenre',
+        operation,
+        null
+      );
+    } catch (error) {
+      // Si falla, buscar en caché o retornar vacío
+      console.log(`⚠️ Database unavailable for genre ${genreId} - Checking cache again`);
+      const cachedFallback = await cacheService.get(cacheKey);
+      if (cachedFallback) {
+        console.log(`✓ Serving genre ${genreId} movies from cache (fallback)`);
+        return { ...cachedFallback, fromCache: true, degradedMode: true };
+      }
+
       return {
         movies: [],
         pagination: { currentPage: page, totalPages: 0, totalItems: 0, itemsPerPage: limit },
+        fromCache: false,
         degradedMode: true
       };
-    };
-
-    return await resilienceService.executeWithFallback(
-      'getMoviesByGenre',
-      operation,
-      fallback
-    );
+    }
   }
 
   /**
@@ -135,25 +159,27 @@ class MovieService {
       return cached;
     }
 
-    const operation = async () => {
-      const result = await movieRepository.searchByTitle(query, page, limit);
-      await cacheService.cacheSearchResults(query, result);
-      return result;
-    };
+    try {
+      const operation = async () => {
+        const result = await movieRepository.searchByTitle(query, page, limit);
+        await cacheService.cacheSearchResults(query, result);
+        return result;
+      };
 
-    const fallback = async () => {
+      return await resilienceService.executeWithFallback(
+        'searchMovies',
+        operation,
+        null
+      );
+    } catch (error) {
+      console.log(`⚠️ Database unavailable for search "${query}"`);
       return {
         movies: [],
         pagination: { currentPage: page, totalPages: 0, totalItems: 0, itemsPerPage: limit },
+        fromCache: false,
         degradedMode: true
       };
-    };
-
-    return await resilienceService.executeWithFallback(
-      'searchMovies',
-      operation,
-      fallback
-    );
+    }
   }
 
   async getMoviesByDirector(director, page, limit) {
