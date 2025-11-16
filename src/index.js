@@ -7,6 +7,7 @@ const { getKafkaService } = require('./services/kafkaService');
 const { getResilienceService } = require('./services/resilienceService');
 const { getCacheWarmingService } = require('./services/cacheWarmingService');
 const { getKafkaConsumerWorker } = require('./workers/kafkaConsumerWorker');
+const client = require('prom-client');
 
 const cacheService = getCacheService();
 const kafkaService = getKafkaService();
@@ -16,15 +17,53 @@ const kafkaConsumerWorker = getKafkaConsumerWorker();
 
 const app = express();
 
+// Prometheus metrics setup
+const collectDefaultMetrics = client.collectDefaultMetrics;
+collectDefaultMetrics();
+
+// Custom HTTP request counter
+const httpRequestCounter = new client.Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'route', 'status']
+});
+
+// Histogram for HTTP request duration (latencia)
+const httpRequestDuration = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duración de las peticiones HTTP en segundos',
+  labelNames: ['method', 'route', 'status'],
+  buckets: [0.05, 0.1, 0.2, 0.5, 1, 2, 5]
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
+// Request logging & metrics middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  // Latencia
+  const end = httpRequestDuration.startTimer({ method: req.method, route: req.route ? req.route.path : req.path });
+  res.on('finish', () => {
+    httpRequestCounter.inc({
+      method: req.method,
+      route: req.route ? req.route.path : req.path,
+      status: res.statusCode
+    });
+    end({ status: res.statusCode });
+  });
   next();
+});
+// Prometheus metrics endpoint
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', client.register.contentType);
+    res.end(await client.register.metrics());
+  } catch (err) {
+    res.status(500).end(err.message);
+  }
 });
 
 // Mount API routes
