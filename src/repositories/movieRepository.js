@@ -61,18 +61,45 @@ class MovieRepository {
   async findByGenre(genreId, page = 1, limit = 20) {
     const offset = (page - 1) * limit;
 
+    // Primero obtenemos los IDs de películas que tienen este género
+    const movieIds = await MovieGenre.findAll({
+      where: { genre_id: parseInt(genreId) },
+      attributes: ['movie_id'],
+      raw: true
+    });
+
+    const ids = movieIds.map(mg => mg.movie_id);
+
+    if (ids.length === 0) {
+      return {
+        movies: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: 0
+        }
+      };
+    }
+
+    // Luego buscamos las películas con esos IDs
     const { count, rows } = await Movie.findAndCountAll({
+      where: {
+        id: {
+          [Op.in]: ids
+        }
+      },
       limit,
       offset,
       include: [
         {
           model: Genre,
           as: 'genres',
-          where: { genre_id: genreId },
           through: { attributes: [] }
         }
       ],
-      order: [['release_date', 'DESC']]
+      order: [['release_date', 'DESC']],
+      distinct: true
     });
 
     return {

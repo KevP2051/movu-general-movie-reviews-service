@@ -218,19 +218,25 @@ class KafkaService {
   // ========== CONSUMIDORES (Procesar mensajes de la cola) ==========
 
   /**
-   * Suscribirse a un topic y procesar mensajes
+   * Suscribirse a múltiples topics y procesar mensajes
    */
-  async subscribe(topic, messageHandler) {
+  async subscribeToTopics(topicHandlers) {
     try {
       if (!this.consumer) {
         await this.initConsumer();
       }
 
-      await this.consumer.subscribe({ 
-        topic, 
-        fromBeginning: false 
-      });
+      // Suscribirse a todos los topics primero
+      const topics = Object.keys(topicHandlers);
+      for (const topic of topics) {
+        await this.consumer.subscribe({ 
+          topic, 
+          fromBeginning: false 
+        });
+        console.log(`✓ Subscribed to topic: ${topic}`);
+      }
 
+      // Luego ejecutar el consumer una sola vez
       await this.consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
           try {
@@ -241,18 +247,32 @@ class KafkaService {
               action: value.action
             });
 
-            await messageHandler(value);
+            // Buscar el handler correspondiente al topic
+            const handler = topicHandlers[topic];
+            if (handler) {
+              await handler(value);
+            } else {
+              console.warn(`⚠️ No handler found for topic: ${topic}`);
+            }
           } catch (error) {
             console.error(`❌ Error processing message from topic ${topic}:`, error.message);
           }
         }
       });
 
-      console.log(`✓ Subscribed to Kafka topic: ${topic}`);
+      console.log('✓ Kafka consumer is running and listening to:', topics);
     } catch (error) {
-      console.error(`❌ Error subscribing to topic ${topic}:`, error.message);
+      console.error('❌ Error subscribing to topics:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Suscribirse a un topic individual (método legacy - usar subscribeToTopics)
+   */
+  async subscribe(topic, messageHandler) {
+    console.warn('⚠️ subscribe() is deprecated. Use subscribeToTopics() instead.');
+    return this.subscribeToTopics({ [topic]: messageHandler });
   }
 
   /**

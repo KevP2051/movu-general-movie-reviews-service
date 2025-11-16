@@ -39,10 +39,11 @@ class MovieController {
 
   async getMoviesByGenre(req, res) {
     try {
+      const { genreId } = req.params;
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 20;
 
-      const result = await movieService.getMoviesByGenre(req.params.genreId, page, limit);
+      const result = await movieService.getMoviesByGenre(genreId, page, limit);
 
       res.status(200).json({
         success: true,
