@@ -29,7 +29,7 @@
     "db:dump": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-database-dump.ps1",
     "db:dump:external": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-dump-external.ps1",
     "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1",
-    "build": "powershell -Command \"Write-Host 'Building project...'; if (Test-Path dist) { Remove-Item -Recurse -Force dist }; Copy-Item -Recurse -Force src dist\"",
+    "build": "node -e \"const fs = require('fs'); const path = require('path'); if (fs.existsSync('dist')) fs.rmSync('dist', {recursive: true}); fs.cpSync('src', 'dist', {recursive: true}); console.log('Build completed successfully!')\"",
     "test": "jest"
   },
   "keywords": [
