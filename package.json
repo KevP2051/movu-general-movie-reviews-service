@@ -28,7 +28,9 @@
     "tmdb:reimport-credits": "node src/scripts/reimport-credits.js",
     "db:dump": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-database-dump.ps1",
     "db:dump:external": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-dump-external.ps1",
-    "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1"
+    "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1",
+    "build": "node -e \"const fs = require('fs'); const path = require('path'); if (fs.existsSync('dist')) fs.rmSync('dist', {recursive: true}); fs.cpSync('src', 'dist', {recursive: true}); console.log('Build completed successfully!')\"",
+    "test": "jest"
   },
   "keywords": [
     "movies",
@@ -53,6 +55,7 @@
     "sequelize": "^6.32.0"
   },
   "devDependencies": {
+    "jest": "^30.2.0",
     "nodemon": "^3.0.0",
     "sequelize-cli": "^6.6.0"
   }
