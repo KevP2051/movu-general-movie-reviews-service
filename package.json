@@ -29,7 +29,7 @@
     "db:dump": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-database-dump.ps1",
     "db:dump:external": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-dump-external.ps1",
     "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1",
-    "build": "echo 'Building project...' && mkdir -p dist && cp -r src/* dist/",
+    "build": "powershell -Command \"Write-Host 'Building project...'; if (Test-Path dist) { Remove-Item -Recurse -Force dist }; Copy-Item -Recurse -Force src dist\"",
     "test": "jest"
   },
   "keywords": [
