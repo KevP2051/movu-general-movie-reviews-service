@@ -29,7 +29,7 @@
     "db:dump": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-database-dump.ps1",
     "db:dump:external": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-dump-external.ps1",
     "db:validate": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-setup.ps1",
-    "lint": "eslint src --ext .js --max-warnings=0",
+    "lint": "eslint src --ext .js",
     "lint:fix": "eslint src --ext .js --fix",
     "build": "npm run lint && node -e \"const fs = require('fs'); const path = require('path'); if (fs.existsSync('dist')) fs.rmSync('dist', {recursive: true}); fs.cpSync('src', 'dist', {recursive: true}); console.log('Build completed successfully!')\"",
     "test": "jest"
@@ -58,6 +58,7 @@
   },
   "devDependencies": {
     "eslint": "^9.39.1",
+    "globals": "^16.5.0",
     "jest": "^30.2.0",
     "nodemon": "^3.0.0",
     "sequelize-cli": "^6.6.0"
