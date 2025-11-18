@@ -1,33 +1,16 @@
-# Build stage
-FROM node:18-alpine AS builder
-
+FROM node:20-alpine AS builder
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci --only=production
 
-# Copy source code
-COPY . .
-
-# Production stage
-FROM node:18-alpine
-
+FROM node:20-alpine
 WORKDIR /app
-
-# Copy dependencies and source from builder
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/package*.json ./
-
-# Expose port
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --chown=nodejs:nodejs . .
+USER nodejs
 EXPOSE 8082
-
-# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:8082/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
-
-# Start the service
 CMD ["node", "src/index.js"]

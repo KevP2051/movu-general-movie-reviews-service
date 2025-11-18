@@ -1,0 +1,48 @@
+# Version control
+.git
+.github
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# Dependencies (installed in container)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Testing
+tests
+coverage
+*.test.js
+jest.config.js
+.nyc_output
+
+# Build artifacts
+dist
+build
+*.log
+
+# Documentation
+README.md
+CHANGELOG.md
+*.md
+docs
+
+# Development
+scripts
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+.sequelizerc
+
+# Linting
+eslint.config.js
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+docker
