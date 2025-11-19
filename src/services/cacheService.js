@@ -2,23 +2,46 @@ const Redis = require('ioredis');
 
 class CacheService {
   constructor() {
+    this.isAvailableFlag = false;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 10;
+    
     this.redis = new Redis({
       host: process.env.REDIS_HOST || 'localhost',
       port: process.env.REDIS_PORT || 6379,
       password: process.env.REDIS_PASSWORD || undefined,
       retryStrategy: (times) => {
+        // Limitar reintentos para evitar spam de logs
+        if (times > this.maxReconnectAttempts) {
+          console.warn(`⚠️ Redis: Maximum reconnection attempts (${this.maxReconnectAttempts}) reached. Stopping retries.`);
+          return null; // Detener reintentos
+        }
+        
+        this.reconnectAttempts = times;
         const delay = Math.min(times * 50, 2000);
         return delay;
       },
-      maxRetriesPerRequest: 3
+      maxRetriesPerRequest: 3,
+      enableOfflineQueue: false, // No encolar comandos cuando está desconectado
+      lazyConnect: false
     });
 
     this.redis.on('error', (err) => {
-      console.error('❌ Redis connection error:', err.message);
+      // Solo mostrar error cada 5 intentos para reducir spam
+      if (this.reconnectAttempts % 5 === 0 || this.reconnectAttempts === 1) {
+        console.error('❌ Redis connection error:', err.message);
+      }
+      this.isAvailableFlag = false;
     });
 
     this.redis.on('connect', () => {
       console.log('✓ Redis connected successfully');
+      this.isAvailableFlag = true;
+      this.reconnectAttempts = 0;
+    });
+
+    this.redis.on('close', () => {
+      this.isAvailableFlag = false;
     });
 
     // TTL por defecto (en segundos)
@@ -101,10 +124,16 @@ class CacheService {
    * Verificar si Redis está disponible
    */
   async isAvailable() {
+    // Usar el flag primero para evitar intentos innecesarios
+    if (!this.isAvailableFlag) {
+      return false;
+    }
+    
     try {
       await this.redis.ping();
       return true;
     } catch (error) {
+      this.isAvailableFlag = false;
       return false;
     }
   }
@@ -181,9 +210,27 @@ class CacheService {
   /**
    * Cachear estadísticas de reseñas de una película
    */
-  async cacheMovieStats(movieId, stats) {
+  async cacheMovieStats(movieId, stats, ttl = 600) {
     const key = `movie:${movieId}:stats`;
-    return await this.set(key, stats, 600); // 10 minutos (datos más dinámicos)
+    return await this.set(key, stats, ttl); // TTL configurable (default: 10 minutos)
+  }
+
+  /**
+   * Extender el TTL de las estadísticas si existen en caché (útil durante caídas de BD)
+   */
+  async extendMovieStatsTTL(movieId, newTTL = 3600) {
+    const key = `movie:${movieId}:stats`;
+    try {
+      const exists = await this.redis.exists(key);
+      if (exists) {
+        await this.redis.expire(key, newTTL);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`Error extending TTL for ${key}:`, error.message);
+      return false;
+    }
   }
 
   /**

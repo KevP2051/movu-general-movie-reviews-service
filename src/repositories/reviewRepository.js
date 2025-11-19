@@ -192,6 +192,18 @@ class ReviewRepository {
   }
 
   /**
+   * Buscar reseña existente de un usuario para una película
+   */
+  async findByUserAndMovie(userId, movieId) {
+    return await Review.findOne({
+      where: {
+        user_id: userId,
+        movie_id: movieId
+      }
+    });
+  }
+
+  /**
    * Crear nueva reseña
    */
   async create(reviewData) {

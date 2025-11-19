@@ -94,6 +94,13 @@ class ResilienceService {
   }
 
   /**
+   * Registrar el Kafka worker para pausar/reanudar automáticamente
+   */
+  registerKafkaWorker(worker) {
+    this.kafkaWorker = worker;
+  }
+
+  /**
    * Iniciar monitoreo periódico de la base de datos
    */
   startDatabaseMonitoring(intervalMs = 5000) {
@@ -107,6 +114,13 @@ class ResilienceService {
       if (!isHealthy && !this.isDatabaseDown) {
         console.log('🔴 Database health check failed - Activating degraded mode');
         this.isDatabaseDown = true;
+        
+        // Pausar el Kafka consumer para evitar reintentos innecesarios
+        if (this.kafkaWorker) {
+          await this.kafkaWorker.pause().catch(err => {
+            console.warn('⚠️ Error pausing Kafka worker:', err.message);
+          });
+        }
       } else if (isHealthy && this.isDatabaseDown) {
         console.log('🟢 Database health check passed - Deactivating degraded mode');
         this.isDatabaseDown = false;
@@ -114,6 +128,13 @@ class ResilienceService {
         // IMPORTANTE: Resetear todos los Circuit Breakers para que vuelvan a intentar
         console.log('🔄 Resetting all Circuit Breakers to allow reconnection');
         this.resetAllBreakers();
+        
+        // Reanudar el Kafka consumer
+        if (this.kafkaWorker) {
+          await this.kafkaWorker.resume().catch(err => {
+            console.warn('⚠️ Error resuming Kafka worker:', err.message);
+          });
+        }
       }
     }, intervalMs);
 

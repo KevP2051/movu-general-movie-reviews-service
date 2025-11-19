@@ -78,13 +78,7 @@ class ReviewService {
   async getReviewsByMovie(movieId, page, limit, status = 'APPROVED') {
     const cacheKey = `reviews:movie:${movieId}:${page}:${limit}:${status}`;
 
-    // Verificar que la película existe
-    const movie = await movieRepository.findById(movieId);
-    if (!movie) {
-      throw new Error('Movie not found');
-    }
-
-    // Intentar obtener del caché
+    // Intentar obtener del caché PRIMERO (antes de verificar BD)
     if (cacheService.isAvailable()) {
       try {
         const cached = await cacheService.get(cacheKey);
@@ -97,17 +91,53 @@ class ReviewService {
       }
     }
 
-    // Si no está en caché, consultar BD
-    const reviews = await reviewRepository.findByMovie(movieId, page, limit, status);
+    // Intentar consultar BD (puede fallar si está caída)
+    try {
+      // Verificar que la película existe
+      const movie = await movieRepository.findById(movieId);
+      if (!movie) {
+        throw new Error('Movie not found');
+      }
 
-    // Guardar en caché (fire-and-forget)
-    if (cacheService.isAvailable()) {
-      cacheService.set(cacheKey, reviews, 300).catch(err => 
-        console.warn(`⚠️ Error al guardar en caché:`, err.message)
-      );
+      // Consultar reviews desde BD
+      const reviews = await reviewRepository.findByMovie(movieId, page, limit, status);
+
+      // Guardar en caché (fire-and-forget)
+      if (cacheService.isAvailable()) {
+        cacheService.set(cacheKey, reviews, 300).catch(err => 
+          console.warn(`⚠️ Error al guardar en caché:`, err.message)
+        );
+      }
+
+      return reviews;
+    } catch (error) {
+      // Si la BD falla, intentar servir desde caché otra vez
+      console.warn(`⚠️ BD no disponible para reviews de movie ${movieId}, buscando en caché...`);
+      
+      if (cacheService.isAvailable()) {
+        const cached = await cacheService.get(cacheKey);
+        if (cached) {
+          console.log(`✅ Reviews servidas desde caché (modo degradado) para movie ${movieId}`);
+          
+          // Extender TTL durante modo degradado para evitar que expire
+          await cacheService.set(cacheKey, cached, 3600).catch(() => {});
+          
+          return cached;
+        }
+      }
+      
+      // Si no hay caché disponible, retornar estructura vacía
+      console.warn(`⚠️ No hay reviews en caché para movie ${movieId}`);
+      return {
+        reviews: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: 0
+        }
+      };
     }
-
-    return reviews;
   }
 
   async getReviewsByUser(userId, page, limit) {
@@ -127,12 +157,7 @@ class ReviewService {
   async getMovieStats(movieId) {
     const cacheKey = `reviews:movie:${movieId}:stats`;
 
-    const movie = await movieRepository.findById(movieId);
-    if (!movie) {
-      throw new Error('Movie not found');
-    }
-
-    // Intentar obtener del caché
+    // Intentar obtener del caché PRIMERO (antes de verificar BD)
     if (cacheService.isAvailable()) {
       try {
         const cached = await cacheService.get(cacheKey);
@@ -145,17 +170,50 @@ class ReviewService {
       }
     }
 
-    // Si no está en caché, consultar BD
-    const stats = await reviewRepository.getMovieStats(movieId);
+    // Intentar consultar BD (puede fallar si está caída)
+    try {
+      const movie = await movieRepository.findById(movieId);
+      if (!movie) {
+        throw new Error('Movie not found');
+      }
 
-    // Guardar en caché (5 minutos)
-    if (cacheService.isAvailable()) {
-      cacheService.set(cacheKey, stats, 300).catch(err => 
-        console.warn(`⚠️ Error al guardar stats en caché:`, err.message)
-      );
+      // Consultar stats desde BD
+      const stats = await reviewRepository.getMovieStats(movieId);
+
+      // Guardar en caché (5 minutos)
+      if (cacheService.isAvailable()) {
+        cacheService.set(cacheKey, stats, 300).catch(err => 
+          console.warn(`⚠️ Error al guardar stats en caché:`, err.message)
+        );
+      }
+
+      return stats;
+    } catch (error) {
+      // Si la BD falla, intentar servir desde caché otra vez
+      console.warn(`⚠️ BD no disponible para stats de movie ${movieId}, buscando en caché...`);
+      
+      if (cacheService.isAvailable()) {
+        const cached = await cacheService.get(cacheKey);
+        if (cached) {
+          console.log(`✅ Stats servidas desde caché (modo degradado) para movie ${movieId}`);
+          
+          // Extender TTL durante modo degradado para evitar que expire
+          await cacheService.set(cacheKey, cached, 3600).catch(() => {});
+          
+          return cached;
+        }
+      }
+      
+      // Si no hay caché disponible, retornar estructura vacía
+      console.warn(`⚠️ No hay stats en caché para movie ${movieId}`);
+      return {
+        total_reviews: 0,
+        average_rating: null,
+        max_rating: null,
+        min_rating: null,
+        ratingDistribution: {}
+      };
     }
-
-    return stats;
   }
 
   /**
@@ -180,22 +238,57 @@ class ReviewService {
       reviewData.status = 'APPROVED';
     }
 
-    console.log(`📝 Creando nueva review en PostgreSQL...`);
-    console.log(`📝 Datos:`, {
-      movie_id: reviewData.movie_id,
-      user_id: reviewData.user_id,
-      rating: reviewData.rating,
-      title: reviewData.title,
-      user_email: reviewData.user_email,
-      user_name: reviewData.user_name,
-      status: reviewData.status
-    });
-
+    console.log(`📝 Verificando si existe review previa del usuario...`);
+    
     try {
-      // 1. Guardar en BD
-      const review = await reviewRepository.create(reviewData);
-      
-      console.log(`✅ Review guardada en PostgreSQL (ID: ${review.review_id})`);
+      // 1. Buscar si ya existe una reseña de este usuario para esta película
+      const existingReview = await reviewRepository.findByUserAndMovie(
+        reviewData.user_id,
+        reviewData.movie_id
+      );
+
+      let review;
+      let isUpdate = false;
+
+      if (existingReview) {
+        // ACTUALIZAR reseña existente
+        console.log(`🔄 Actualizando review existente (ID: ${existingReview.review_id})`);
+        console.log(`📝 Datos nuevos:`, {
+          rating: reviewData.rating,
+          title: reviewData.title,
+          content: reviewData.content,
+          hasSpoiler: reviewData.hasSpoiler
+        });
+        
+        await existingReview.update({
+          rating: reviewData.rating,
+          title: reviewData.title,
+          content: reviewData.content || existingReview.content,
+          hasSpoiler: reviewData.hasSpoiler !== undefined ? reviewData.hasSpoiler : existingReview.hasSpoiler,
+          status: reviewData.status || existingReview.status,
+          user_email: reviewData.user_email || existingReview.user_email,
+          user_name: reviewData.user_name || existingReview.user_name
+        });
+        
+        review = existingReview;
+        isUpdate = true;
+        console.log(`✅ Review actualizada exitosamente`);
+      } else {
+        // CREAR nueva reseña
+        console.log(`📝 Creando nueva review en PostgreSQL...`);
+        console.log(`📝 Datos:`, {
+          movie_id: reviewData.movie_id,
+          user_id: reviewData.user_id,
+          rating: reviewData.rating,
+          title: reviewData.title,
+          user_email: reviewData.user_email,
+          user_name: reviewData.user_name,
+          status: reviewData.status
+        });
+        
+        review = await reviewRepository.create(reviewData);
+        console.log(`✅ Review guardada en PostgreSQL (ID: ${review.review_id})`);
+      }
       
       // 2. Invalidar caché de forma asíncrona (fire-and-forget)
       if (cacheService.isAvailable()) {
@@ -227,6 +320,7 @@ class ReviewService {
       if (kafkaService.isAvailable()) {
         (async () => {
           try {
+            const eventType = isUpdate ? 'review-updated' : 'review-created';
             await kafkaService.sendReviewCreate({
               review_id: review.review_id,
               movie_id: review.movie_id,
@@ -234,9 +328,10 @@ class ReviewService {
               rating: review.rating,
               status: review.status,
               title: review.title,
-              content: review.content
+              content: review.content,
+              isUpdate: isUpdate
             });
-            console.log(`📤 Evento enviado a Kafka: review-created`);
+            console.log(`📤 Evento enviado a Kafka: ${eventType}`);
           } catch (error) {
             console.warn(`⚠️ Error al enviar a Kafka:`, error.message);
           }
@@ -246,6 +341,13 @@ class ReviewService {
       return review;
     } catch (error) {
       console.error(`❌ ERROR al crear review:`, error.message);
+      console.error(`❌ Stack trace:`, error.stack);
+      
+      // Si la BD está caída, dar un mensaje más claro
+      if (error.message && error.message.includes('connect')) {
+        throw new Error('Database unavailable - Cannot create review at this time');
+      }
+      
       throw error;
     }
   }

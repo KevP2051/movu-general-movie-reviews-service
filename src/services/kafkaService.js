@@ -276,6 +276,44 @@ class KafkaService {
   }
 
   /**
+   * Pausar el consumer (deja de procesar mensajes pero mantiene la conexión)
+   */
+  async pauseConsumer() {
+    if (!this.consumer) {
+      throw new Error('Consumer not initialized');
+    }
+    
+    try {
+      await this.consumer.pause([
+        { topic: this.TOPICS.REVIEWS },
+        { topic: this.TOPICS.MOVIES }
+      ]);
+    } catch (error) {
+      console.error('❌ Error pausing consumer:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Reanudar el consumer
+   */
+  async resumeConsumer() {
+    if (!this.consumer) {
+      throw new Error('Consumer not initialized');
+    }
+    
+    try {
+      await this.consumer.resume([
+        { topic: this.TOPICS.REVIEWS },
+        { topic: this.TOPICS.MOVIES }
+      ]);
+    } catch (error) {
+      console.error('❌ Error resuming consumer:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Desconectar productor y consumidor
    */
   async disconnect() {

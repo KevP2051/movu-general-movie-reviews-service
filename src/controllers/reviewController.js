@@ -192,9 +192,21 @@ class ReviewController {
       });
     } catch (error) {
       console.error(`❌ Error creating review:`, error.message);
-      res.status(400).json({
+      console.error(`❌ Error stack:`, error.stack);
+      
+      // Determinar el código de estado apropiado
+      let statusCode = 400;
+      let errorMessage = error.message || 'Unknown error occurred';
+      
+      // Si la BD está caída o hay error de conexión
+      if (error.message && (error.message.includes('connect') || error.message.includes('unavailable'))) {
+        statusCode = 503; // Service Unavailable
+        errorMessage = 'Service temporarily unavailable - Database connection failed';
+      }
+      
+      res.status(statusCode).json({
         success: false,
-        error: error.message
+        error: errorMessage
       });
     }
   }

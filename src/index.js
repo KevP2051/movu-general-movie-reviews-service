@@ -240,6 +240,9 @@ const startServer = async () => {
 
     // 5. Start database health monitoring (Circuit Breaker)
     try {
+      // Registrar el Kafka worker para que se pause/reanude automáticamente
+      resilienceService.registerKafkaWorker(kafkaConsumerWorker);
+      
       resilienceService.startDatabaseMonitoring(5000);
       console.log('✅ Database health monitoring started');
     } catch (error) {

@@ -2,9 +2,11 @@ const { getKafkaService } = require('../services/kafkaService');
 const reviewRepository = require('../repositories/reviewRepository');
 const movieRepository = require('../repositories/movieRepository');
 const { getCacheService } = require('../services/cacheService');
+const { getResilienceService } = require('../services/resilienceService');
 
 const kafkaService = getKafkaService();
 const cacheService = getCacheService();
+const resilienceService = getResilienceService();
 
 /**
  * Worker para procesar mensajes de Kafka y escribir a BD cuando se recupera
@@ -12,12 +14,19 @@ const cacheService = getCacheService();
 class KafkaConsumerWorker {
   constructor() {
     this.isRunning = false;
+    this.isPaused = false;
   }
 
   /**
    * Procesar eventos de reseñas
    */
   async processReviewMessage(message) {
+    // Si la BD no está disponible, pausar el procesamiento
+    if (!resilienceService.isDatabaseAvailable()) {
+      console.warn('⚠️ Database unavailable - message will be retried later');
+      throw new Error('Database unavailable - retry later');
+    }
+
     const { action, data, reviewId } = message;
 
     try {
@@ -65,6 +74,12 @@ class KafkaConsumerWorker {
    * Procesar eventos de películas
    */
   async processMovieMessage(message) {
+    // Si la BD no está disponible, pausar el procesamiento
+    if (!resilienceService.isDatabaseAvailable()) {
+      console.warn('⚠️ Database unavailable - message will be retried later');
+      throw new Error('Database unavailable - retry later');
+    }
+
     const { action, data, movieId } = message;
 
     try {
@@ -141,6 +156,44 @@ class KafkaConsumerWorker {
   }
 
   /**
+   * Pausar el procesamiento (mantiene la conexión pero no procesa mensajes)
+   */
+  async pause() {
+    if (this.isPaused) {
+      return;
+    }
+    
+    console.log('⏸️  Pausing Kafka consumer worker (database unavailable)...');
+    this.isPaused = true;
+    
+    try {
+      await kafkaService.pauseConsumer();
+      console.log('✓ Kafka consumer paused');
+    } catch (error) {
+      console.error('❌ Error pausing consumer:', error.message);
+    }
+  }
+
+  /**
+   * Reanudar el procesamiento
+   */
+  async resume() {
+    if (!this.isPaused) {
+      return;
+    }
+    
+    console.log('▶️  Resuming Kafka consumer worker...');
+    this.isPaused = false;
+    
+    try {
+      await kafkaService.resumeConsumer();
+      console.log('✓ Kafka consumer resumed');
+    } catch (error) {
+      console.error('❌ Error resuming consumer:', error.message);
+    }
+  }
+
+  /**
    * Detener el worker
    */
   async stop() {
@@ -153,6 +206,7 @@ class KafkaConsumerWorker {
       console.log('🛑 Stopping Kafka consumer worker...');
       await kafkaService.disconnect();
       this.isRunning = false;
+      this.isPaused = false;
       console.log('✓ Kafka consumer worker stopped');
     } catch (error) {
       console.error('❌ Error stopping Kafka consumer worker:', error.message);
