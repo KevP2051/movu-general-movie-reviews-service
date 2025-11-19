@@ -213,7 +213,17 @@ class ReviewService {
         })();
       }
 
-      // 3. Enviar evento a Kafka de forma asíncrona
+      // 3. Actualizar rating promedio de la película de forma asíncrona
+      (async () => {
+        try {
+          await this.updateMovieAverageRating(reviewData.movie_id);
+          console.log(`📊 Rating promedio actualizado para movie ${reviewData.movie_id}`);
+        } catch (error) {
+          console.warn(`⚠️ Error al actualizar rating promedio:`, error.message);
+        }
+      })();
+
+      // 4. Enviar evento a Kafka de forma asíncrona
       if (kafkaService.isAvailable()) {
         (async () => {
           try {
@@ -503,6 +513,31 @@ class ReviewService {
         reviewId,
         newStatus
       };
+    }
+  }
+
+  /**
+   * Actualizar el rating promedio de una película
+   */
+  async updateMovieAverageRating(movieId) {
+    try {
+      // Obtener estadísticas de reviews aprobadas
+      const stats = await reviewRepository.getMovieStats(movieId);
+      const avgRating = stats.average_rating ? parseFloat(stats.average_rating) : null;
+      
+      // Actualizar el campo average_rating en la tabla MOVIES
+      await movieRepository.update(movieId, { average_rating: avgRating });
+      
+      // Invalidar caché de la película
+      if (cacheService.isAvailable()) {
+        await cacheService.invalidateMovie(movieId);
+      }
+      
+      console.log(`✅ Average rating actualizado para movie ${movieId}: ${avgRating}`);
+      return avgRating;
+    } catch (error) {
+      console.error(`❌ Error actualizando average rating para movie ${movieId}:`, error.message);
+      throw error;
     }
   }
 }

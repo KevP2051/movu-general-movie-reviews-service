@@ -14,6 +14,7 @@ Movie.init({
     poster_path:{type:DataTypes.STRING,allowNull:true},
     backdrop_path:{type:DataTypes.STRING,allowNull:true},
     tmdb_id:{type:DataTypes.INTEGER,allowNull:true,unique:true},
+    average_rating:{type:DataTypes.DECIMAL(3,2),allowNull:true,field:'average_rating'},
 }, {
     sequelize,
     modelName:'movie',
