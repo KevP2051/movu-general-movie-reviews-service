@@ -1,384 +1,270 @@
 # Movu General Movie Reviews Service
 
-Microservicio de reseñas de películas para la plataforma Movu. Proporciona una API REST completa para gestionar películas, reseñas, géneros y personas relacionadas con el cine.
+Servicio para la gestión de películas, reseñas y ratings de la plataforma MovieReviews. Permite crear, consultar, actualizar y eliminar reseñas, así como obtener estadísticas agregadas y gestionar información de películas.
 
-## Tabla de Contenidos
+## Autores
 
-- [Características](#características)
-- [Requisitos](#requisitos)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Docker Setup (Recomendado)](#docker-setup-recomendado)
-- [Ejecución](#ejecución)
-- [API Endpoints](#api-endpoints)
-- [Poblar Base de Datos desde TMDb](#poblar-base-de-datos-desde-tmdb)
-- [Base de Datos](#base-de-datos)
-- [Modelos](#modelos)
-- [Documentación](#documentación)
+- Kevin Johann Jimenez Poveda ([KevP2051](https://github.com/KevP2051))
+- Juan Pablo Martinez Gomez ([naju999](https://github.com/naju999))
 
----
+## Características principales
 
-## Características
+- CRUD completo de reseñas y ratings
+- Gestión de películas y géneros
+- Moderación de contenido
+- Estadísticas agregadas por película
+- Integración con Redis para caché
+- Integración con Kafka para eventos
+- Sistema de importación de películas desde TMDB
+- Circuit breaker para resiliencia
+- Métricas de Prometheus
+- Testing completo con Jest
 
-- **Gestión de Películas**: CRUD completo, búsqueda, filtrado por género, director, año
-- **Sistema de Reseñas**: Calificaciones, comentarios, moderación (aprobar/rechazar)
-- **Gestión de Personas**: Actores, directores, crew
-- **Géneros**: Categorización de películas
-- **Estadísticas**: Ratings promedio, distribución de calificaciones
-- **Búsqueda Avanzada**: Por título, director, año, género
-- **Importación TMDb**: Alimentar la BD automáticamente desde TMDb API
-- **Paginación**: En todos los endpoints que retornan listas
-- **Validación**: Middleware de validación de datos
-- **Sistema de Resiliencia**: Alta disponibilidad con Redis y Kafka
-  - **Redis Cache**: Lecturas rápidas cuando BD está caída
-  - **Kafka Queue**: Escrituras encoladas cuando BD está caída
-  - **Circuit Breaker**: Detección automática de fallos
-  - **Auto-recovery**: Worker procesa cola cuando BD se recupera
+## Estructura del proyecto
 
----
-
-## Requisitos
-
-- **Node.js**: v16 o superior
-- **PostgreSQL**: v12 o superior
-- **Redis**: v6 o superior (para sistema de resiliencia)
-- **Kafka**: v2.8 o superior (para sistema de resiliencia)
-- **npm**: v8 o superior
-- **TMDb API Key**: Para importar datos (opcional)
-
----
-
-## Instalación
-
-```powershell
-# Clonar el repositorio
-git clone <repo-url>
-cd movu-general-movie-reviews-service
-
-# Instalar dependencias
-npm install
+```
+movu-general-movie-reviews-service/
+├── package.json
+├── .env
+├── README.md
+├── src/
+│   ├── index.js                  # Punto de entrada
+│   ├── config/
+│   │   ├── database.js           # Configuración de Sequelize
+│   │   ├── redis.js              # Configuración de Redis
+│   │   └── kafka.js              # Configuración de Kafka
+│   ├── controllers/
+│   │   ├── movieController.js    # Lógica de películas
+│   │   ├── reviewController.js   # Lógica de reseñas
+│   │   └── genreController.js    # Lógica de géneros
+│   ├── middleware/
+│   │   ├── authMiddleware.js     # Validación JWT
+│   │   ├── cacheMiddleware.js    # Middleware de caché
+│   │   └── errorHandler.js       # Manejo de errores
+│   ├── migrations/               # Migraciones de Sequelize
+│   ├── models/                   # Modelos de datos
+│   │   ├── index.js
+│   │   ├── Movie.js
+│   │   ├── Review.js
+│   │   ├── Genre.js
+│   │   └── Person.js
+│   ├── repositories/             # Capa de acceso a datos
+│   │   ├── movieRepository.js
+│   │   ├── reviewRepository.js
+│   │   └── genreRepository.js
+│   ├── routes/
+│   │   ├── movie.routes.js       # Rutas de películas
+│   │   ├── review.routes.js      # Rutas de reseñas
+│   │   └── genre.routes.js       # Rutas de géneros
+│   ├── seeders/                  # Datos iniciales
+│   ├── services/
+│   │   ├── movieService.js       # Lógica de negocio
+│   │   ├── reviewService.js
+│   │   ├── cacheService.js       # Gestión de caché
+│   │   └── kafkaService.js       # Publicación de eventos
+│   ├── scripts/
+│   │   ├── populate-database.js  # Script de población de datos
+│   │   ├── tmdb-importer.js      # Importador de TMDB
+│   │   └── warm-cache.js         # Precalentamiento de caché
+│   └── workers/
+│       └── reviewWorker.js       # Worker de procesamiento
+├── docs/                         # Documentación adicional
+└── tests/
+    └── unit/
 ```
 
----
+## Instalación y ejecución
 
-## Configuración
+### Requisitos previos
 
-### 1. Variables de Entorno
+- Node.js 16 o superior
+- PostgreSQL 12 o superior
+- Redis 6 o superior
+- npm o yarn
+- (Opcional) Kafka para eventos
+- (Opcional) API Key de TMDB para importar películas
 
-Crea un archivo `.env` basado en `.env.example`:
+### Pasos de instalación
 
-```powershell
-cp .env.example .env
+1. Clona el repositorio:
+   ```bash
+   git clone https://github.com/KevP2051/movu-general-movie-reviews-service.git
+   cd movu-general-movie-reviews-service
+   ```
+
+2. Instala las dependencias:
+   ```bash
+   npm install
+   ```
+
+3. Configura el archivo `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edita el archivo `.env`:
+   ```env
+   # Servidor
+   PORT=8082
+   NODE_ENV=development
+   
+   # Base de datos
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=movu_db
+   DB_USER=movu
+   DB_PASSWORD=movudbpassword
+   DB_SCHEMA=reviews_service
+   
+   # Database URL
+   DATABASE_URL=postgresql://movu:movudbpassword@localhost:5432/movu_db
+   
+   # Redis
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
+   REDIS_PASSWORD=
+   REDIS_DB=0
+   CACHE_TTL=3600
+   
+   # Kafka (opcional)
+   KAFKA_BROKER=localhost:9092
+   KAFKA_CLIENT_ID=movu-reviews-service
+   
+   # TMDB API (opcional para importar películas)
+   TMDB_API_KEY=tu-api-key
+   TMDB_BASE_URL=https://api.themoviedb.org/3
+   
+   # CORS
+   CORS_ORIGIN=http://localhost:8080,http://localhost:3000
+   
+   # Auth Service
+   AUTH_SERVICE_URL=http://localhost:8081
+   ```
+
+4. Configura la base de datos:
+   ```bash
+   # Crear la base de datos (si no existe)
+   createdb movu_db -U postgres
+   
+   # Inicializar schema y ejecutar migraciones
+   npm run db:migrate
+   
+   # (Opcional) Cargar datos iniciales
+   npm run db:seed
+   ```
+
+5. Inicia Redis:
+   ```bash
+   # En Windows con WSL o Linux
+   redis-server
+   
+   # O usando Docker
+   docker run -d -p 6379:6379 redis:latest
+   ```
+
+6. Inicia el servicio:
+   ```bash
+   npm start
+   ```
+   
+   Para desarrollo con recarga automática:
+   ```bash
+   npm run dev
+   ```
+
+### Scripts disponibles
+
+```bash
+# Iniciar servicio en producción
+npm start
+
+# Iniciar servicio en desarrollo con nodemon
+npm run dev
+
+# Ejecutar pruebas
+npm test
+
+# Verificar sintaxis con ESLint
+npm run lint
+
+# Corregir problemas de linting automáticamente
+npm run lint:fix
+
+# Build completo
+npm run build
+
+# Migraciones de base de datos
+npm run db:init              # Inicializar schema
+npm run db:migrate           # Ejecutar migraciones pendientes
+npm run db:migrate:undo      # Revertir última migración
+npm run db:migrate:undo:all  # Revertir todas las migraciones
+
+# Seeders
+npm run db:seed              # Cargar datos iniciales
+npm run db:seed:undo         # Revertir seeders
+
+# Población de datos
+npm run db:populate          # Poblar con datos de ejemplo
+npm run db:populate:clean    # Limpiar y poblar
+npm run db:populate:full     # Poblar con muchos datos
+
+# Importación de TMDB
+npm run tmdb:genres          # Importar géneros desde TMDB
+npm run tmdb:popular         # Importar películas populares
+npm run tmdb:top-rated       # Importar películas mejor valoradas
+npm run tmdb:all             # Importar todo desde TMDB
+
+# Caché
+npm run cache:warm           # Precalentar caché con datos frecuentes
 ```
 
-Configura las variables:
+## Migraciones
 
-```env
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=movu_db
-DB_USER=postgres
-DB_PASSWORD=
-DB_SCHEMA=general_movie_reviews_service
+Este servicio utiliza Sequelize para gestionar el esquema de base de datos. Las migraciones se ejecutan automáticamente con el comando de migración.
 
-# Server
-PORT=3001
-NODE_ENV=development
+### Aplicar migraciones
 
-# TMDb API (opcional, para importar datos)
-TMDB_API_KEY=
+```bash
+# Inicializar schema si no existe
+npm run db:init
 
-# Redis (Sistema de Resiliencia)
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
-
-# Kafka (Sistema de Resiliencia)
-KAFKA_BROKERS=localhost:9092
-```
-
----
-
-## 🛡️ Sistema de Resiliencia (Redis + Kafka)
-
-El servicio implementa un sistema robusto de **alta disponibilidad** que permite seguir funcionando aunque PostgreSQL esté caída.
-
-### Probar el Sistema de Resiliencia
-
-```powershell
-# Verificar que Redis y Kafka están funcionando
-npm run test:resilience
-```
-
-Este comando ejecuta una demo completa que:
-- ✅ Prueba conexión Redis
-- ✅ Prueba conexión Kafka
-- ✅ Demuestra Circuit Breaker
-- ✅ Explica toda la arquitectura
-
-### Cómo Funciona
-
-**Cuando la BD está disponible:**
-- Operaciones normales
-- Datos se cachean en Redis para lecturas rápidas
-
-**Cuando la BD está CAÍDA:**
-- **Lecturas**: Se sirven desde Redis (caché)
-- **Escrituras**: Se encolan en Kafka
-- Usuario recibe respuesta inmediata
-
-**Cuando la BD se recupera:**
-- Worker procesa automáticamente la cola de Kafka
-- Sincroniza todas las operaciones pendientes
-
-### Monitoreo
-
-```powershell
-# Ver estado del sistema de resiliencia
-curl http://localhost:3001/api/resilience/status
-```
-
-### Documentación Completa
-
-- **[docs/RESILIENCE.md](docs/RESILIENCE.md)**: Arquitectura y testing
-- **[docs/EXPLICACION_REDIS_KAFKA.md](docs/EXPLICACION_REDIS_KAFKA.md)**: Explicación detallada de Redis, Kafka y TTLs
-- **[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)**: Estado actual de implementación
-
-### 2. Base de Datos
-
-#### Opción A: Con Docker Compose (Recomendado)
-
-Ver la sección [Docker Setup](#docker-setup-recomendado) más abajo para setup completo con un solo comando.
-
-#### Opción B: Docker Manual
-
-```powershell
-docker run --name movu-postgres -e POSTGRES_PASSWORD=<tu_password> -e POSTGRES_DB=movu_db -p 5432:5432 -d postgres:14
-```
-
-#### Ejecutar Migraciones
-
-```powershell
+# Ejecutar todas las migraciones pendientes
 npm run db:migrate
 ```
 
-Esto creará automáticamente:
-- El esquema `general_movie_reviews_service`
-- Todas las tablas necesarias
+Las migraciones crean:
+1. Schema `reviews_service`
+2. Tabla de películas
+3. Tabla de géneros
+4. Tabla de reseñas
+5. Tabla de personas (actores/directores)
+6. Tablas de relación (películas-géneros, películas-personas)
 
----
+### Revertir migraciones
 
-## Docker Setup (Recomendado)
+```bash
+# Revertir la última migración
+npm run db:migrate:undo
 
-La forma más rápida de tener todo funcionando es usar Docker Compose, que levantará:
-- PostgreSQL con el esquema creado
-- Migraciones ejecutadas automáticamente
-- Opcionalmente, datos pre-cargados de TMDB
-
-### Inicio Rápido con Docker
-
-```powershell
-# 1. Configurar variables de entorno
-cp .env.docker .env
-
-# Editar .env con tus valores:
-# - DB_PASSWORD=tu_password
-# - TMDB_API_KEY=tu_api_key (si quieres datos)
-# - POPULATE_DATABASE=true (para pre-cargar datos)
-
-# 2. Levantar todo con un solo comando
-docker-compose up -d
-
-# 3. Verificar que está funcionando
-docker-compose logs -f
+# Revertir todas las migraciones
+npm run db:migrate:undo:all
 ```
 
-Esto creará automáticamente:
-- Base de datos PostgreSQL
-- Esquema `general_movie_reviews_service`
-- Todas las tablas (via migraciones)
-- Datos de TMDB (si `POPULATE_DATABASE=true`)
+### Crear nueva migración
 
-### Comandos Docker Útiles
-
-```powershell
-# Ver logs
-docker-compose logs -f
-
-# Detener
-docker-compose down
-
-# Reiniciar desde cero (borra todos los datos)
-docker-compose down -v
-docker-compose up -d
-
-# Ejecutar migraciones manualmente
-docker-compose exec db-setup npm run db:migrate
-
-# Poblar datos manualmente
-docker-compose exec db-setup npm run db:populate
-
-# Validar que todo está configurado correctamente
-npm run db:validate
-
-# Generar dump SQL para usar en otro repositorio
-npm run db:dump
+```bash
+npm run migration:generate -- nombre-de-la-migracion
 ```
 
-### Usar en Otro Repositorio
+## Importación de datos desde TMDB
 
-Si quieres levantar la base de datos en un repositorio separado:
+El servicio incluye scripts para importar películas desde The Movie Database (TMDB):
 
-**Documentación detallada:**
-- [docker/STEP_BY_STEP.md](docker/STEP_BY_STEP.md) - Instrucciones paso a paso
-- [docker/EXTERNAL_REPO_SETUP.md](docker/EXTERNAL_REPO_SETUP.md) - 4 opciones diferentes
-- [docker/README.md](docker/README.md) - Documentación completa
+1. Obtén una API Key desde [TMDB](https://www.themoviedb.org/settings/api)
+2. Añade la key al archivo `.env` como `TMDB_API_KEY`
+3. Ejecuta los scripts de importación:
 
-**Guía rápida:**
-1. Genera el dump: `npm run db:dump`
-2. Copia archivos a tu otro repo (ver guía)
-3. Ejecuta: `docker-compose up -d`
-
----
-
-## Ejecución
-
-### Modo Desarrollo
-
-```powershell
-npm run dev
-```
-
-El servidor se iniciará en `http://localhost:3001`
-
-### Modo Producción
-
-```powershell
-npm start
-```
-
----
-
-## API Endpoints
-
-El servidor expone los siguientes endpoints:
-
-### Movies
-- `GET /api/movies` - Listar películas (con paginación)
-- `GET /api/movies/:id` - Obtener película por ID
-- `GET /api/movies/search?q=titulo` - Buscar películas
-- `GET /api/movies/genre/:genreId` - Películas por género
-- `GET /api/movies/director?director=nombre` - Películas por director
-- `GET /api/movies/year/:year` - Películas por año
-- `POST /api/movies` - Crear película
-- `PUT /api/movies/:id` - Actualizar película
-- `DELETE /api/movies/:id` - Eliminar película
-
-### Reviews
-- `GET /api/reviews` - Listar reseñas
-- `GET /api/reviews/movie/:movieId` - Reseñas de una película
-- `GET /api/reviews/movie/:movieId/stats` - Estadísticas de reseñas
-- `GET /api/reviews/user/:userId` - Reseñas de un usuario
-- `GET /api/reviews/rating?min=8&max=10` - Reseñas por rating
-- `POST /api/reviews` - Crear reseña
-- `PUT /api/reviews/:id` - Actualizar reseña
-- `DELETE /api/reviews/:id` - Eliminar reseña
-- `PATCH /api/reviews/:id/approve` - Aprobar reseña
-- `PATCH /api/reviews/:id/reject` - Rechazar reseña
-
-### Genres
-- `GET /api/genres` - Listar géneros
-- `GET /api/genres/:id` - Obtener género por ID
-- `POST /api/genres` - Crear género
-- `PUT /api/genres/:id` - Actualizar género
-- `DELETE /api/genres/:id` - Eliminar género
-
-### People
-- `GET /api/people` - Listar personas
-- `GET /api/people/search?q=nombre` - Buscar personas
-- `GET /api/people/:id` - Obtener persona por ID
-- `GET /api/people/:id/movies` - Películas de una persona
-- `POST /api/people` - Crear persona
-- `PUT /api/people/:id` - Actualizar persona
-- `DELETE /api/people/:id` - Eliminar persona
-
-### Health Check
-- `GET /api/health` - Verificar estado del servicio
-
-**Ver documentación completa:** [docs/ENDPOINTS.md](docs/ENDPOINTS.md)
-
----
-
-## Poblar Base de Datos desde TMDb
-
-El proyecto incluye un **script maestro** que pobla automáticamente toda la base de datos desde The Movie Database (TMDb) con un solo comando.
-
-### Setup Rápido (Recomendado)
-
-```powershell
-# 1. Configurar TMDB_API_KEY en .env
-
-# 2. Poblar la base de datos completa con un solo comando
-npm run db:populate
-```
-
-Este comando ejecutará:
-1. Migraciones de base de datos
-2. Importación de géneros (19 géneros en español)
-3. Importación de películas (populares + top rated)
-4. Importación de créditos (directores + actores)
-5. Verificación de datos
-
-**Resultado esperado:** ~80-100 películas con géneros, directores y actores completos.
-
-### Comandos Disponibles
-
-```powershell
-# Poblar todo desde cero (limpia datos existentes)
-npm run db:populate:clean
-
-# Poblar todo (más páginas de películas)
-npm run db:populate:full
-
-# Solo importar géneros
-npm run db:populate -- --genres-only
-
-# Solo importar películas (sin créditos)
-npm run db:populate -- --movies-only --pages 10
-
-# Solo importar créditos
-npm run db:populate -- --credits-only
-```
-
-### Opciones Avanzadas
-
-```powershell
-# Importar 20 páginas de películas (400 películas)
-npm run db:populate -- --pages 20
-
-# Limpiar y poblar con 10 páginas
-npm run db:populate -- --clean --pages 10
-
-# Solo géneros con limpieza
-npm run db:populate -- --clean --genres-only
-```
-
-### Documentación Completa
-
-Para más detalles sobre:
-- Arquitectura del script
-- Datos importados
-- Solución de problemas
-- Uso de imágenes de TMDb
-
-**Ver guía completa:** [docs/DATABASE_POPULATION.md](docs/DATABASE_POPULATION.md)
-
-### Scripts Individuales (Uso Avanzado)
-
-Si necesitas importar componentes específicos manualmente:
-
-```powershell
+```bash
 # Importar géneros
 npm run tmdb:genres
 
@@ -388,172 +274,177 @@ npm run tmdb:popular
 # Importar películas mejor valoradas
 npm run tmdb:top-rated
 
-# Importar una película específica por ID
-npm run tmdb:movie 278  # The Shawshank Redemption
+# Importar todo
+npm run tmdb:all
 ```
 
-**Ver más opciones:** [docs/TMDB_IMPORT.md](docs/TMDB_IMPORT.md)
+## Endpoints principales
 
----
+### Películas
 
-## Base de Datos
+- `GET /api/movies` - Listar películas (con paginación)
+  - Query params: `page`, `limit`, `genre`, `year`, `sort`
+- `GET /api/movies/search` - Buscar películas
+  - Query params: `q`, `genre`, `year`
+- `GET /api/movies/:id` - Obtener película por ID
+- `POST /api/movies` - Crear película (admin)
+- `PUT /api/movies/:id` - Actualizar película (admin)
+- `DELETE /api/movies/:id` - Eliminar película (admin)
 
-### Esquema
+### Reseñas
 
-Todas las tablas se crean en el esquema `general_movie_reviews_service`.
+- `GET /api/reviews` - Listar todas las reseñas
+- `GET /api/reviews/:id` - Obtener reseña por ID
+- `GET /api/reviews/movie/:movieId` - Reseñas de una película
+- `GET /api/reviews/movie/:movieId/stats` - Estadísticas de una película
+- `POST /api/reviews` - Crear reseña (requiere autenticación)
+  ```json
+  {
+    "movieId": 1,
+    "rating": 9,
+    "comment": "Excelente película",
+    "hasSpoiler": false
+  }
+  ```
+- `PUT /api/reviews/:id` - Actualizar reseña (requiere autenticación)
+- `DELETE /api/reviews/:id` - Eliminar reseña (requiere autenticación)
 
-### Comandos de Migraciones
+### Géneros
 
-```powershell
-# Ejecutar migraciones
-npm run db:migrate
+- `GET /api/genres` - Listar todos los géneros
+- `GET /api/genres/:id` - Obtener género por ID
+- `GET /api/genres/:id/movies` - Películas de un género
 
-# Revertir última migración
-npm run db:migrate:undo
+## Testing
 
-# Revertir todas las migraciones
+Para ejecutar las pruebas:
+```bash
+npm test
+```
+
+Las pruebas cubren:
+- CRUD de películas y reseñas
+- Cálculo de estadísticas
+- Integración con Redis
+- Middleware de caché
+- Validaciones de datos
+
+## Integración con Redis
+
+El servicio utiliza Redis para cachear:
+- Listados de películas populares
+- Estadísticas de películas
+- Detalles de películas frecuentemente consultadas
+- Búsquedas recientes
+
+El caché se invalida automáticamente cuando:
+- Se crea/actualiza/elimina una reseña
+- Se modifica información de una película
+- El TTL expira (configurado en `CACHE_TTL`)
+
+Para precalentar el caché:
+```bash
+npm run cache:warm
+```
+
+## Integración con Kafka
+
+El servicio publica eventos a Kafka:
+- `review.created` - Nueva reseña creada
+- `review.updated` - Reseña actualizada
+- `review.deleted` - Reseña eliminada
+- `movie.created` - Nueva película añadida
+- `movie.stats_updated` - Estadísticas actualizadas
+
+Configura `KAFKA_BROKER` en `.env` para habilitar esta funcionalidad.
+
+## Resiliencia
+
+El servicio implementa patrones de resiliencia:
+- **Circuit Breaker**: Usando Opossum para llamadas externas
+- **Retry logic**: Reintentos automáticos en fallos transitorios
+- **Graceful degradation**: Funcionalidad reducida si Redis no está disponible
+- **Health checks**: Endpoint `/health` para monitoreo
+
+## Métricas y monitoreo
+
+El servicio expone métricas de Prometheus en `/metrics`:
+- Número de reseñas por película
+- Ratings promedio
+- Tiempos de respuesta
+- Cache hit/miss rate
+- Errores de base de datos
+
+## Dependencias principales
+
+### Producción
+
+- **express** - Framework web para Node.js
+- **sequelize** - ORM para PostgreSQL
+- **pg** - Driver de PostgreSQL
+- **ioredis** - Cliente de Redis
+- **kafkajs** - Cliente de Kafka
+- **axios** - Cliente HTTP para TMDB
+- **opossum** - Circuit breaker
+- **prom-client** - Métricas de Prometheus
+- **dotenv** - Gestión de variables de entorno
+- **cors** - Configuración de CORS
+
+### Desarrollo
+
+- **jest** - Framework de testing
+- **eslint** - Linter de JavaScript
+- **nodemon** - Recarga automática en desarrollo
+- **sequelize-cli** - CLI de Sequelize para migraciones
+
+## Seguridad
+
+Implementaciones de seguridad:
+- Validación de JWT para operaciones protegidas
+- Sanitización de entradas
+- Límite de longitud en comentarios
+- Detección y marcado de spoilers
+- CORS configurado
+- Rate limiting (configurado en el gateway)
+
+## Troubleshooting
+
+### Error de conexión a PostgreSQL
+
+Verifica que:
+1. PostgreSQL esté ejecutándose
+2. Las credenciales en `.env` sean correctas
+3. La base de datos `movu_db` exista
+4. El schema `reviews_service` esté creado
+
+### Error de conexión a Redis
+
+Si Redis no está disponible:
+1. Verifica que Redis esté ejecutándose: `redis-cli ping`
+2. Comprueba la configuración en `.env`
+3. El servicio funcionará sin caché si Redis falla
+
+### Migraciones fallan
+
+Si las migraciones fallan:
+```bash
+# Revertir todas
 npm run db:migrate:undo:all
 
-# Crear nueva migración
-npm run migration:generate -- nombre-de-la-migracion
-```
+# Reinicializar schema
+npm run db:init
 
-### Comandos de Seeders
-
-```powershell
-# Ejecutar seeders
-npm run db:seed
-
-# Revertir seeders
-npm run db:seed:undo
-
-# Crear nuevo seeder
-npm run seed:generate -- nombre-del-seeder
-```
-
----
-
-## Modelos
-
-El proyecto incluye los siguientes modelos Sequelize:
-
-### Movie
-Películas con información completa (título, sinopsis, fecha de estreno, etc.)
-
-### Review
-Reseñas de usuarios con calificaciones (1-10) y comentarios.
-
-**Estados:**
-- `pending`: Esperando moderación
-- `approved`: Aprobada
-- `rejected`: Rechazada
-
-### Genre
-Géneros de películas (Action, Drama, Comedy, etc.)
-
-### MovieGenre
-Tabla intermedia para relación many-to-many entre películas y géneros.
-
-### People
-Personas relacionadas con películas (actores, directores, etc.)
-
-### Credits
-Créditos de películas con rol (`actor`, `director`, `producer`, etc.)
-
----
-
-## Documentación
-
-- **[docker/README.md](docker/README.md)**: Guía completa de Docker Compose
-- **[docker/EXTERNAL_REPO_SETUP.md](docker/EXTERNAL_REPO_SETUP.md)**: Cómo usar la base de datos en otro repositorio
-- **[DATABASE_POPULATION.md](docs/DATABASE_POPULATION.md)**: Guía completa de población de base de datos
-- **[TMDB_IMPORT.md](docs/TMDB_IMPORT.md)**: Guía de importación manual avanzada desde TMDb
-- **[ENDPOINTS.md](docs/ENDPOINTS.md)**: Documentación completa de la API con ejemplos
-
----
-
-## Tecnologías
-
-- **Express**: Framework web
-- **Sequelize**: ORM para PostgreSQL
-- **PostgreSQL**: Base de datos
-- **Docker**: Containerización
-- **Axios**: Cliente HTTP para TMDb API
-- **dotenv**: Gestión de variables de entorno
-- **CORS**: Manejo de CORS
-
----
-
-## Estructura del Proyecto
-
-```
-movu-general-movie-reviews-service/
-├── src/
-│   ├── config/           # Configuración de DB y Sequelize CLI
-│   ├── controllers/      # Controladores HTTP
-│   ├── middleware/       # Middleware de validación
-│   ├── migrations/       # Migraciones de base de datos
-│   ├── models/           # Modelos Sequelize
-│   ├── repositories/     # Capa de acceso a datos
-│   ├── routes/           # Definición de rutas
-│   ├── scripts/          # Scripts de utilidad (importador TMDb)
-│   ├── services/         # Lógica de negocio
-│   └── index.js          # Punto de entrada de la aplicación
-├── docs/                 # Documentación
-├── .env.example          # Ejemplo de variables de entorno
-├── .sequelizerc          # Configuración de Sequelize CLI
-├── package.json
-└── README.md
-```
-
----
-
-## Notas de Seguridad
-
-- **user_id en Reviews**: Es una referencia externa al servicio de autenticación (no hay FK)
-- **Autenticación**: Actualmente no implementada (próxima versión)
-- **CORS**: Habilitado para todos los orígenes en desarrollo
-
----
-
-## Solución de Problemas
-
-### Error: "Schema does not exist"
-
-```powershell
-# El script de migraciones crea el esquema automáticamente
+# Ejecutar migraciones nuevamente
 npm run db:migrate
 ```
 
-### Error: "Connection refused"
+### Importación de TMDB falla
 
-Verifica que PostgreSQL esté corriendo:
-```powershell
-docker ps  # Si usas Docker
-```
+Asegúrate de que:
+1. La API Key de TMDB sea válida
+2. Tengas conexión a internet
+3. No hayas excedido el límite de peticiones de TMDB
 
-### Películas duplicadas en TMDb import
-
-El importador omite automáticamente películas ya existentes (por `tmdb_id`).
-
----
-
-## License
+## Licencia
 
 ISC
-
----
-
-## Contribuir
-
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
----
-
-## Contacto
-
-Para preguntas o sugerencias, abre un issue en el repositorio.
