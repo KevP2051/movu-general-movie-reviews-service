@@ -23,12 +23,15 @@ class KafkaConsumerWorker {
     try {
       switch (action) {
         case 'CREATE':
-          console.log('📝 Processing queued review creation...');
-          const review = await reviewRepository.create(data);
-          console.log(`✓ Review created successfully: ${review.id}`);
+          // La review ya fue creada sincrónicamente en el endpoint
+          // Este evento es solo para procesamiento adicional (analytics, notificaciones, etc.)
+          console.log(`✓ Review CREATE event processed: movie_id=${data.movie_id}, review_id=${data.review_id}`);
           
-          // Invalidar caché
-          await cacheService.invalidateMovieStats(data.movie_id);
+          // Aquí podrías agregar:
+          // - Enviar notificaciones
+          // - Actualizar métricas de analytics
+          // - Sincronizar con otros servicios
+          // El caché ya fue invalidado en el servicio principal
           break;
 
         case 'UPDATE':
