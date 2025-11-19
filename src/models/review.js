@@ -11,7 +11,7 @@ Review.init({
     title: {type: DataTypes.STRING, allowNull: false},
     content: {type: DataTypes.TEXT, allowNull: true},
     hasSpoiler: {type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false},
-    status: {type: DataTypes.ENUM('PENDING', 'APPROVED', 'REJECTED'), allowNull: false, defaultValue: 'PENDING'},
+    status: {type: DataTypes.ENUM('PENDING', 'APPROVED', 'REJECTED'), allowNull: false, defaultValue: 'APPROVED'},
 
 }, {
     sequelize,

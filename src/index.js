@@ -38,12 +38,20 @@ const httpRequestDuration = new client.Histogram({
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging & metrics middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  
+  // Log detallado para POST /api/reviews
+  if (req.method === 'POST' && req.path.includes('/reviews')) {
+    console.log('🎯 [Middleware] POST a reviews detectado');
+    console.log('📋 Content-Type:', req.headers['content-type']);
+    console.log('📏 Content-Length:', req.headers['content-length']);
+  }
+  
   // Latencia
   const end = httpRequestDuration.startTimer({ method: req.method, route: req.route ? req.route.path : req.path });
   res.on('finish', () => {
@@ -54,6 +62,13 @@ app.use((req, res, next) => {
     });
     end({ status: res.statusCode });
   });
+  
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      console.error('⚠️ [Middleware] Conexión cerrada antes de enviar respuesta:', req.method, req.path);
+    }
+  });
+  
   next();
 });
 // Prometheus metrics endpoint
@@ -68,6 +83,25 @@ app.get('/metrics', async (req, res) => {
 
 // Mount API routes
 app.use('/api', routes);
+
+// Error handler middleware (debe ir DESPUÉS de las rutas)
+app.use((err, req, res, next) => {
+  console.error('🚨 [Error Handler] Error no manejado:');
+  console.error('   Path:', req.method, req.path);
+  console.error('   Error:', err.message);
+  console.error('   Stack:', err.stack);
+  
+  // Si ya se enviaron headers, delegar al handler por defecto
+  if (res.headersSent) {
+    return next(err);
+  }
+  
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal Server Error',
+    path: req.path
+  });
+});
 
 // Root endpoint
 app.get('/', (req, res) => {

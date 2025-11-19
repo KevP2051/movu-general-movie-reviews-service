@@ -54,6 +54,13 @@ class ReviewController {
         status
       );
 
+      // Deshabilitar caché del navegador para reviews (contenido dinámico)
+      res.set({
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+
       res.status(200).json({
         success: true,
         data: result.reviews,
@@ -120,13 +127,29 @@ class ReviewController {
 
   async getMovieStats(req, res) {
     try {
-      const stats = await reviewService.getMovieStats(req.params.movieId);
+      const movieId = req.params.movieId;
+      console.log(`📊 Solicitando estadísticas para movie ${movieId}`);
+      
+      const stats = await reviewService.getMovieStats(movieId);
+      
+      console.log(`✓ Estadísticas obtenidas para movie ${movieId}:`, {
+        totalReviews: stats.total_reviews || stats.totalReviews || 0,
+        avgRating: stats.average_rating || stats.averageRating || 0
+      });
+
+      // Deshabilitar caché del navegador para estadísticas (datos dinámicos)
+      res.set({
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
 
       res.status(200).json({
         success: true,
         data: stats
       });
     } catch (error) {
+      console.error(`❌ Error obteniendo estadísticas para movie ${req.params.movieId}:`, error.message);
       res.status(404).json({
         success: false,
         error: error.message
@@ -135,16 +158,27 @@ class ReviewController {
   }
 
   async createReview(req, res) {
+    console.log('🎯 [Controller] POST /api/reviews recibido');
+    console.log('📦 [Controller] Body:', JSON.stringify(req.body));
+    console.log('🔑 [Controller] Headers:', {
+      'x-user-id': req.headers['x-user-id'],
+      'x-user-email': req.headers['x-user-email'],
+      'content-type': req.headers['content-type']
+    });
+    
     try {
       // En producción, user_id vendría del token JWT
       // Por ahora lo tomamos del body
       const review = await reviewService.createReview(req.body);
 
+      console.log(`📝 Review creation completed - returning response to client`);
+      
       res.status(201).json({
         success: true,
         data: review
       });
     } catch (error) {
+      console.error(`❌ Error creating review:`, error.message);
       res.status(400).json({
         success: false,
         error: error.message

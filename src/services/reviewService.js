@@ -73,17 +73,14 @@ class ReviewService {
   }
 
   /**
-   * Obtener reseñas por película con caché
+   * Obtener reseñas por película (MODO DEBUG - SIN CACHÉ)
    */
   async getReviewsByMovie(movieId, page, limit, status = 'APPROVED') {
-    const cacheKey = `reviews:movie:${movieId}:${page}:${limit}:${status}`;
-    
-    // Intentar desde caché
-    const cached = await cacheService.get(cacheKey);
-    if (cached) {
-      console.log(`✅ Reviews for movie ${movieId} served from cache`);
-      return cached;
-    }
+    // ==========================================
+    // 🔧 MODO DEBUG: CACHE DESACTIVADO
+    // ==========================================
+    console.log(`🔧 [DEBUG] Obteniendo reviews de movie ${movieId} DIRECTAMENTE de PostgreSQL (sin caché)`);
+    console.log(`   - Page: ${page}, Limit: ${limit}, Status: ${status}`);
 
     // Verificar que la película existe
     const movie = await movieRepository.findById(movieId);
@@ -92,17 +89,19 @@ class ReviewService {
     }
 
     try {
-      const breaker = resilienceService.createDatabaseBreaker();
-      const reviews = await breaker.fire(async () => {
-        return await reviewRepository.findByMovie(movieId, page, limit, status);
+      // Consulta DIRECTA a PostgreSQL sin caché
+      const reviews = await reviewRepository.findByMovie(movieId, page, limit, status);
+      
+      console.log(`✅ [DEBUG] Reviews obtenidas de BD para movie ${movieId}:`, {
+        count: reviews.reviews?.length || 0,
+        total: reviews.pagination?.total || 0
       });
 
-      // Cachear (30 minutos)
-      await cacheService.set(cacheKey, reviews, 1800);
+      // ⚠️ NO guardamos en caché en modo debug
       return reviews;
     } catch (error) {
-      console.log(`⚠️ Database unavailable for movie ${movieId} reviews`);
-      return { reviews: [], total: 0, page, limit };
+      console.error(`❌ [DEBUG] Error obteniendo reviews de BD:`, error.message);
+      throw error;
     }
   }
 
@@ -118,15 +117,13 @@ class ReviewService {
   }
 
   /**
-   * Obtener estadísticas de película con caché
+   * Obtener estadísticas de película (MODO DEBUG - SIN CACHÉ)
    */
   async getMovieStats(movieId) {
-    // Usar método del cacheService
-    const cached = await cacheService.getMovieStats(movieId);
-    if (cached) {
-      console.log(`✅ Stats for movie ${movieId} served from cache`);
-      return cached;
-    }
+    // ==========================================
+    // 🔧 MODO DEBUG: CACHE DESACTIVADO
+    // ==========================================
+    console.log(`🔧 [DEBUG] Obteniendo stats de movie ${movieId} DIRECTAMENTE de PostgreSQL (sin caché)`);
 
     const movie = await movieRepository.findById(movieId);
     if (!movie) {
@@ -134,22 +131,20 @@ class ReviewService {
     }
 
     try {
-      const breaker = resilienceService.createDatabaseBreaker();
-      const stats = await breaker.fire(async () => {
-        return await reviewRepository.getMovieStats(movieId);
+      // Consulta DIRECTA a PostgreSQL sin caché
+      const stats = await reviewRepository.getMovieStats(movieId);
+      
+      console.log(`✅ [DEBUG] Stats obtenidas de BD para movie ${movieId}:`, {
+        totalReviews: stats.total_reviews || 0,
+        avgRating: stats.average_rating || 0,
+        hasDistribution: !!stats.ratingDistribution
       });
 
-      // Cachear stats (15 minutos)
-      await cacheService.cacheMovieStats(movieId, stats);
+      // ⚠️ NO guardamos en caché en modo debug
       return stats;
     } catch (error) {
-      console.log(`⚠️ Database unavailable for movie ${movieId} stats`);
-      return { 
-        movieId, 
-        totalReviews: 0, 
-        averageRating: 0,
-        cached: false
-      };
+      console.error(`❌ [DEBUG] Error obteniendo stats de BD:`, error.message);
+      throw error;
     }
   }
 
@@ -170,44 +165,47 @@ class ReviewService {
     // La película ya fue validada en el frontend cuando se carga la página de detalles
     // Esta validación extra causaba lentitud innecesaria (~500ms-2s de retraso)
 
-    // Establecer estado por defecto
+    // Establecer estado por defecto (APPROVED para que aparezca inmediatamente en estadísticas)
     if (!reviewData.status) {
-      reviewData.status = 'PENDING';
+      reviewData.status = 'APPROVED';
     }
 
-    // Si la BD está caída, enviar a Kafka
-    if (!resilienceService.isDatabaseAvailable()) {
-      console.log('⚠️ Database down - Sending review creation to Kafka queue');
-      
-      await kafkaService.sendReviewCreate(reviewData);
+    // ==========================================
+    // 🔧 MODO DEBUG: REDIS Y KAFKA DESACTIVADOS
+    // ==========================================
+    // Guardado DIRECTO en PostgreSQL sin caché ni Kafka
+    
+    console.log(`🔧 [DEBUG MODE] Guardando review directamente en PostgreSQL...`);
+    console.log(`📝 Datos a guardar:`, {
+      movie_id: reviewData.movie_id,
+      user_id: reviewData.user_id,
+      rating: reviewData.rating,
+      title: reviewData.title,
+      status: reviewData.status
+    });
 
-      return {
-        message: 'Review creation queued successfully',
-        queued: true,
-        data: reviewData
-      };
-    }
-
-    // Si la BD está disponible, crear directamente
     try {
+      // Guardar directamente en BD sin pasar por Kafka ni actualizar caché
       const review = await reviewRepository.create(reviewData);
       
-      // Invalidar caché relacionado
-      await cacheService.delPattern(`reviews:movie:${reviewData.movie_id}:*`);
-      await cacheService.delPattern(`reviews:all:*`);
-      await cacheService.del(`movie:stats:${reviewData.movie_id}`);
+      console.log(`✅ [DEBUG] Review guardada EXITOSAMENTE en PostgreSQL:`);
+      console.log(`   - ID: ${review.review_id}`);
+      console.log(`   - Movie: ${review.movie_id}`);
+      console.log(`   - User: ${review.user_id}`);
+      console.log(`   - Rating: ${review.rating}`);
+      console.log(`   - Status: ${review.status}`);
+      console.log(`   - Created: ${review.createdAt}`);
+      
+      // ⚠️ CACHE Y KAFKA DESACTIVADOS TEMPORALMENTE PARA DEBUG
+      console.log(`⚠️ [DEBUG] Caché y Kafka DESACTIVADOS - sin invalidación ni regeneración`);
 
       return review;
     } catch (error) {
-      // Si falla, enviar a Kafka como fallback
-      console.log('⚠️ Database error - Sending review creation to Kafka as fallback');
-      await kafkaService.sendReviewCreate(reviewData);
-
-      return {
-        message: 'Review creation queued due to error',
-        queued: true,
-        data: reviewData
-      };
+      console.error(`❌ [DEBUG] ERROR al guardar en PostgreSQL:`, error.message);
+      console.error(`Stack trace:`, error.stack);
+      
+      // En modo debug NO enviamos a Kafka, lanzamos el error para verlo
+      throw error;
     }
   }
 
