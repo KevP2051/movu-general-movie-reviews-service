@@ -150,6 +150,7 @@ class ReviewRepository {
    * Obtener estadísticas de reseñas de una película
    */
   async getMovieStats(movieId) {
+    // Obtener estadísticas generales
     const stats = await Review.findAll({
       where: {
         movie_id: movieId,
@@ -164,7 +165,30 @@ class ReviewRepository {
       raw: true
     });
 
-    return stats[0];
+    // Obtener distribución de ratings (contar cuántas reviews de cada rating)
+    const distribution = await Review.findAll({
+      where: {
+        movie_id: movieId,
+        status: 'APPROVED'
+      },
+      attributes: [
+        'rating',
+        [Review.sequelize.fn('COUNT', Review.sequelize.col('rating')), 'count']
+      ],
+      group: ['rating'],
+      raw: true
+    });
+
+    // Convertir array de distribución a objeto { rating: count }
+    const ratingDistribution = {};
+    distribution.forEach(item => {
+      ratingDistribution[item.rating] = parseInt(item.count);
+    });
+
+    return {
+      ...stats[0],
+      ratingDistribution
+    };
   }
 
   /**
