@@ -163,13 +163,26 @@ class ReviewController {
     console.log('🔑 [Controller] Headers:', {
       'x-user-id': req.headers['x-user-id'],
       'x-user-email': req.headers['x-user-email'],
+      'x-user-name': req.headers['x-user-name'],
+      'x-user-role': req.headers['x-user-role'],
       'content-type': req.headers['content-type']
     });
     
     try {
-      // En producción, user_id vendría del token JWT
-      // Por ahora lo tomamos del body
-      const review = await reviewService.createReview(req.body);
+      // Agregar información del usuario desde los headers del Gateway
+      const reviewData = {
+        ...req.body,
+        user_email: req.headers['x-user-email'] || null,
+        user_name: req.headers['x-user-name'] || null,
+        userRole: req.headers['x-user-role'] || 'user'
+      };
+      
+      console.log('👤 [Controller] Datos de usuario agregados:', {
+        user_email: reviewData.user_email,
+        user_name: reviewData.user_name
+      });
+      
+      const review = await reviewService.createReview(reviewData);
 
       console.log(`📝 Review creation completed - returning response to client`);
       
